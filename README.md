@@ -1,4 +1,7 @@
 # The Dancing Bee Swarm Intelligence
+<p align="center">
+  <img src="/images/bee.png" alt="Alt text" width="250"/>
+</p>
 
 ## Objective and Motivation: 
 
