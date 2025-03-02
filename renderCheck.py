@@ -390,7 +390,7 @@ class BeeSimEnv(gym.Env):
         pygame.draw.rect(self.screen, (255, 255, 255), pygame.Rect(0, 0, self.arena_length_px, self.arena_width_px), 2)
 
 
-        # Plot elements: bee hive, sources, forging bee, resting bee, following bee and wiggling bees: in robot add each state as a flag.
+        # Plot elements: bee hive, sources, forging bee, resting bee, following bee and wiggling bees. : in robot add each state as a flag.
 
         # Draw the bee hive
         hive_x_px = int(self.hive[0] * self.scale_factor)
@@ -403,6 +403,7 @@ class BeeSimEnv(gym.Env):
             source_x_px = int(self.sources[i][0] * self.scale_factor)
             source_y_px = self.arena_width_px - int(self.sources[i][1] * self.scale_factor)
             pygame.draw.circle(self.screen, (0, 255, 0), (source_x_px, source_y_px), int(self.sources[i][2] * self.scale_factor)// 1)
+
 
         # # Draw the goal point with a red circle indicating the tolerance zone
         # goal_x_px = int(self.goal_point[0] * self.scale_factor)
@@ -924,8 +925,8 @@ class BeeSimEnv(gym.Env):
 if __name__ == "__main__":
     # args = parse_args()
     # Environment parameters
-    arena_length = 15
-    arena_width = 15
+    arena_length = 20
+    arena_width = 20
     robot_wheel_radius = 0.1
     robot_distance_between_wheels = 0.2
     max_wheel_velocity = 10.0
@@ -939,8 +940,8 @@ if __name__ == "__main__":
             arena_width=arena_width,
             num_sheep=num_sheep,
             num_sheepdogs=num_shepherds,
-            num_bees=0,
-            num_sources=0,
+            num_bees=32,  ### always keep multiple of rati0 ie 4.
+            num_sources=5,
             robot_distance_between_wheels=robot_distance_between_wheels,
             robot_wheel_radius=robot_wheel_radius,
             max_wheel_velocity=max_wheel_velocity,
