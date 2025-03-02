@@ -6,7 +6,7 @@ import pygame
 import imageio as iio
 
 class BeeSimEnv(gym.Env):
-    def __init__(self, arena_length, arena_width, num_sheep, num_sheepdogs, 
+    def __init__(self, arena_length, arena_width, num_sheep, num_sheepdogs, num_bees, num_sources,
                  robot_distance_between_wheels, robot_wheel_radius, max_wheel_velocity, 
                  initial_positions=None, goal_point=None, action_mode="wheel", attraction_factor=0.0):
         """
@@ -15,6 +15,8 @@ class BeeSimEnv(gym.Env):
         Args:
             arena_length (float): Length of the arena (meters)
             arena_width (float): Width of the arena (meters)
+            num_bees (int): Number of bees (forger and resting) in the simulation
+            num_sources (int): Number of nectar sources in the simulation
             num_sheep (int): Number of sheep in the simulation
             num_sheepdogs (int): Number of sheepdogs in the simulation
             robot_distance_between_wheels (float): Distance between the wheels of the robots (meters)
@@ -22,7 +24,7 @@ class BeeSimEnv(gym.Env):
             max_wheel_velocity (float): Maximum velocity of the wheels of the robots (meters/second)
             initial_positions (List[List[float]]): Initial positions of the robots in the simulation. [x, y, theta].
             goal_point (List[float]): Goal point for the sheep herd to reach [x, y]
-            action_mode (str): Action mode for the sheep-dogs. Options: "wheel" or "vector" or "point" or "multi".
+            action_mode (str): Action mode for the bees. Options: "wheel" or "vector" or "point" or "multi".
             attraction_factor (float): Attraction factor for the sheep to move towards the goal point. Must be between 0 and 1.
 
         """
@@ -31,6 +33,9 @@ class BeeSimEnv(gym.Env):
         self.arena_width = arena_width
         self.num_sheep = num_sheep
         self.num_sheepdogs = num_sheepdogs
+        
+        self.num_bees = num_bees
+        self.num_sources = num_sources
         self.distance_between_wheels = robot_distance_between_wheels
         self.wheel_radius = robot_wheel_radius
         self.max_wheel_velocity = max_wheel_velocity
@@ -99,7 +104,7 @@ class BeeSimEnv(gym.Env):
 
         # arena parameters
         self.point_dist = 0.1 # distance between the point that is controlled using the vector headings on the robot and the center of the robot
-        self.arena_threshold = 0.5 # distance from the boundary at which the sheep will start moving away from the boundary
+        self.arena_threshold = 0.5 # distance from the boundary at which the robot will start moving away from the boundary
         self.arena_rep = 0.5 # repulsion force from the boundary
 
         # generate random initial positions within the arena if not provided
@@ -331,7 +336,7 @@ class BeeSimEnv(gym.Env):
             if not hasattr(self, 'screen') or not isinstance(self.screen, pygame.display.get_surface().__class__):
                 pygame.init()
                 self.screen = pygame.display.set_mode((self.arena_length_px, self.arena_width_px))
-                pygame.display.set_caption("Herding Simulation")
+                pygame.display.set_caption("Wiggle Dance Simulation")
                 self.clock = pygame.time.Clock()
         else:
             if not hasattr(self, 'screen') or not isinstance(self.screen, pygame.Surface):
@@ -850,3 +855,58 @@ class BeeSimEnv(gym.Env):
         wheel_velocities = wheel_velocities / max_wheel_velocity * max_vel 
 
         return wheel_velocities
+    
+#  To test the simulator
+# import argparse
+# def parse_args():
+#     parser = argparse.ArgumentParser(description="Evaluate a trained RL model for the herding task.")
+#     parser.add_argument("--num_sheep", type=int, default=1, help="Number of sheep in the simulation.")
+#     parser.add_argument("--num_shepherds", type=int, default=1, help="Number of shepherds in the simulation.")
+#     parser.add_argument("--model_path", type=str, required=True, help="Path to the trained RL model.")
+#     parser.add_argument("--save_video", type=str, default="False", help="Save videos of simulations (True/False).")
+#     parser.add_argument("--num_sims", type=int, default=10, help="Number of simulations to run.")
+#     parser.add_argument("--render_mode", type=str, default="human", choices=["human", "offscreen"], help="Render mode for the environment.")
+#     return parser.parse_args()
+
+if __name__ == "__main__":
+    # args = parse_args()
+    # Environment parameters
+    arena_length = 15
+    arena_width = 15
+    robot_wheel_radius = 0.1
+    robot_distance_between_wheels = 0.2
+    max_wheel_velocity = 10.0
+
+    render_mode = "human"
+    num_sheep = 10
+    num_shepherds = 10
+
+    env = BeeSimEnv(
+            arena_length=arena_length,
+            arena_width=arena_width,
+            num_sheep=num_sheep,
+            num_sheepdogs=num_shepherds,
+            num_bees=0,
+            num_sources=0,
+            robot_distance_between_wheels=robot_distance_between_wheels,
+            robot_wheel_radius=robot_wheel_radius,
+            max_wheel_velocity=max_wheel_velocity,
+            action_mode="wheel",
+            attraction_factor=0.0
+        )
+    
+    # for i in range(num_shepherds):
+    #     env.reset(robot_id=i)
+
+    # for i in range(num_shepherds):
+    #     action, _ = models[i].predict(observations[i], deterministic=False)
+    #     observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
+
+        # if render_mode == "human":
+    while(True):
+        env.render(mode="human", fps=60)
+        # elif render_mode == "offscreen":
+        #     env.render()
+
+    #save video and reeset frames.
+    # env.close()
