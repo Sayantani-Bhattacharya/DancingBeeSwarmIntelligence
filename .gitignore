@@ -1,0 +1,10 @@
+venv
+/logs
+/models
+/wandb
+/eval_models
+/videos
+ToNote.txt
+ToDo.txt
+*.vscode
+*__pycache__
