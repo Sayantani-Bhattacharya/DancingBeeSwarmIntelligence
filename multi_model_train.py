@@ -7,6 +7,9 @@ import wandb
 from wandb.integration.sb3 import WandbCallback
 import numpy as np
 
+
+STOPING_INTERATION = 2
+
 # custom function to create environment instances
 def make_env():
     def _init():
@@ -31,13 +34,13 @@ def make_env():
 
 if __name__ == "__main__":
     # Initialize wandb for logging
-    name = "herding_multi_PPO"
+    name = "bee_swarm_PPO"
     time_now = time.strftime("%Y%m%d-%H%M%S")
-    run = wandb.init(project='multi_herding_rl', name=f"{name}-{time_now}" , sync_tensorboard=True, save_code=True)
+    run = wandb.init(project='bee_swarm_rl', name=f"{name}-{time_now}" , sync_tensorboard=True, save_code=True)
 
     # Create directories for saving models and logs
-    models_dir = f"models/herding_test/{name}-{time_now}"
-    logdir = f"logs/herding_test/{name}-{time_now}"
+    models_dir = f"models/bee_swarm_test/{name}-{time_now}"
+    logdir = f"logs/bee_swarm_test/{name}-{time_now}"
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
     if not os.path.exists(logdir):
@@ -55,8 +58,9 @@ if __name__ == "__main__":
     iters = model.num_timesteps // TIMESTEPS
     print(f"Starting from iteration {iters}")
 
-    # main training loop
-    while True:
+    # Main training loop
+    # while True:
+    if (iters <= STOPING_INTERATION):
         iters += 1
         print(f"Starting iteration {iters}...")
         # custom_step = TIMESTEPS*iters
