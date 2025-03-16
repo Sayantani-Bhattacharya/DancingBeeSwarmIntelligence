@@ -46,15 +46,15 @@ class BeeSimEnv(gym.Env):
         self.action_mode = action_mode
         if action_mode == "wheel":
             self.action_space = spaces.Box(low=-1, high=1, 
-                                        shape=((self.num_forger_bees+ self.num_resting_bees) * 2,), dtype=np.float32)
+                                        shape=((self.num_forger_bees+ self.num_resting_bees) * 3,), dtype=np.float32)
         # Action space is the desired vector for robots if action_mode is "vector"
         elif action_mode == "vector":
             self.action_space = spaces.Box(low=-1, high=1, 
-                                        shape=((self.num_forger_bees+ self.num_resting_bees) * 2,), dtype=np.float32)
+                                        shape=((self.num_forger_bees+ self.num_resting_bees) * 3,), dtype=np.float32)
         # Action space is the desired point for robots if action_mode is "point"
         elif action_mode == "point":
             self.action_space = spaces.Box(low=-1, high=1, 
-                                        shape=((self.num_forger_bees+ self.num_resting_bees) * 2,), dtype=np.float32)
+                                        shape=((self.num_forger_bees+ self.num_resting_bees) * 3,), dtype=np.float32)
         # Action space is the desired point for individual robots if action_mode is "multi"
         # This mode uses a single sheep and a single sheep-dog trained model with multiple sheep-dogs and sheep ---------------------------------------------------
         # At present the env is configured to use the point model for controlling the individual sheep-dogs
@@ -199,7 +199,7 @@ class BeeSimEnv(gym.Env):
         """
         # check if the action is valid
         if not self.action_mode == "multi":
-            assert len(action) == self.num_bees * 2, "Invalid action! Incorrect number of actions."
+            assert len(action) == self.num_bees * 3, "Invalid action! Incorrect number of actions."
         else:
             assert len(action) == 2, "Invalid action! Incorrect number of actions."
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
@@ -254,8 +254,17 @@ class BeeSimEnv(gym.Env):
                 # action[0] is the x-coordinate of the point
                 # action[1] is the y-coordinate of the point
                 # map the actions from -1 to 1 to between the arena dimensions
-                action[i * 2] = (action[i * 2] + 1) * self.arena_length / 2
-                action[i * 2 + 1] = (action[i * 2 + 1] + 1) * self.arena_width / 2
+
+
+                # what it was before- idk why though !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+                # action[i * 2] = (action[i * 2] + 1) * self.arena_length / 2
+                # action[i * 2 + 1] = (action[i * 2 + 1] + 1) * self.arena_width / 2
+
+                target_x = (action[i * 3] + 1) * self.arena_length / 2
+                target_y = (action[i * 3 + 1] + 1) * self.arena_width / 2
+                dance_intensity = action[i * 3 + 2] 
+
+
 
                 # get robot state
                 x, y, theta = self.robots[i].get_state()
@@ -265,7 +274,11 @@ class BeeSimEnv(gym.Env):
                 y = y + self.point_dist * np.sin(theta)
 
                 # calculate the vector pointing towards the point
-                vec_desired = np.array([action[i * 2] - x, action[i * 2 + 1] - y])
+                vec_desired = np.array([target_x - x, target_y - y])
+
+                # (Optionally) Use dance_intensity to modify behavior. For now, we simply print it.
+                # TODO:  You can later incorporate it into your motion model or reward.
+                print(f"Robot {i}: Dance intensity = {dance_intensity}")
 
                 # use the diff drive motion model to calculate the wheel velocities
                 wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
