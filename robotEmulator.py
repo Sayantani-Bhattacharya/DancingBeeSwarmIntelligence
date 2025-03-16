@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 class DifferentialDriveRobot:
     def __init__(self, initial_position, distance_between_wheels, wheel_radius):
@@ -8,13 +9,14 @@ class DifferentialDriveRobot:
         self.prev_velocity = np.array([0.0, 0.0])
         self.max_acceleration = float("inf") # m/s^2
         self.omega_acceleration = 7.5 # rad/s^2
+        self.dancing = False
 
     def update_position(self, left_wheel_velocity, right_wheel_velocity, dt=0.1):
         # Differential drive kinematics
         v = self.wheel_radius * (left_wheel_velocity + right_wheel_velocity) / 2.0
         omega = self.wheel_radius * (right_wheel_velocity - left_wheel_velocity) / self.distance_between_wheels
 
-        # apply artificial acceleration limit on velocity changes
+        # Apply artificial acceleration limit on velocity changes
         v = np.clip(v, self.prev_velocity[0] - self.max_acceleration * dt, self.prev_velocity[0] + self.max_acceleration * dt)        
         omega = np.clip(omega, self.prev_velocity[1] - self.omega_acceleration * dt, self.prev_velocity[1] + self.omega_acceleration * dt)
 
@@ -32,5 +34,42 @@ class DifferentialDriveRobot:
         self.prev_velocity = np.array([v, omega])
 
     def get_state(self):
-        return np.array([self.x, self.y, self.theta])
+        return np.array([self.x, self.y, self.theta, self.dancing])
     
+    def wiggle_dance(self, step_counter, distance, orientation, intensity, dt=0.1):
+        # will call updateposition with the appropriate wheel velocities
+        # manage the timing of the dance
+        # code for "Dance" action.
+
+        # write me the code for update position of the robot in a way that makes a 8 like structure, the 8 should be along an AXIS. 
+        # The axis / line is defined by the distance and orientation value and start point of the line is the current pose of the robot.
+
+        # # figure 8
+        # for i in range(steps):
+            print("Dancing values :" , self.dancing)
+            dt = 0.1
+            steps = int(30.0/ dt)
+            # Calculate the velocities to create a figure-8 pattern
+            left_wheel_velocity = intensity * np.sin(2 * np.pi * step_counter / steps)
+            right_wheel_velocity = intensity * np.cos(2 * np.pi * step_counter / steps)
+            
+            # Update the robot's position
+            self.update_position(left_wheel_velocity, right_wheel_velocity, dt)
+            step_counter += 1
+
+        # # Vibration as dance
+        # # for i in range(steps):
+        #     # Make the wheels alternate directions quickly to create vibration
+        #     vibration_amplitude = intensity * 0.5  # Reduce intensity for smaller movements
+        #     # left_wheel_velocity = (-1) ** step_counter * vibration_amplitude  # Alternates between + and -
+        #     # right_wheel_velocity = (-1) ** step_counter * vibration_amplitude  # Alternates between + and -
+        #     # step_counter = 2
+        #     print("sTEP COUNTER", step_counter)
+        #     left_wheel_velocity = (-1) ** step_counter *   5  # Alternates between + and -
+        #     right_wheel_velocity = (-1) ** step_counter * 5  # Alternates between + and -
+
+            
+
+            # Update the robot's position
+            self.update_position(left_wheel_velocity, right_wheel_velocity, dt)
+
