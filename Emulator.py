@@ -68,14 +68,14 @@ class BeeSimEnv(gym.Env):
         
         if self.action_mode == "wheel" or self.action_mode == "vector":
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((self.num_forger_bees+ self.num_resting_bees) *3,), dtype=np.float32)
+                                                shape=((self.num_forger_bees+ self.num_resting_bees) *4,), dtype=np.float32)
         elif self.action_mode == "point":
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((self.num_forger_bees+ self.num_resting_bees) *2,), dtype=np.float32)
+                                                shape=((self.num_forger_bees+ self.num_resting_bees) *3,), dtype=np.float32)
         elif self.action_mode == "multi":
             # when action mode is multi, the env is configured as a single-forger, single-resting env
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((1 + 1)*2,), dtype=np.float32)
+                                                shape=((1 + 1)*3,), dtype=np.float32)
             self.action_count = 0 # counter to keep track of the number of sheep-dogs that have taken their actions
             # self.farthest_sheep = None # a list to keep track of the sheep farthest from the goal point 
 
@@ -526,11 +526,18 @@ class BeeSimEnv(gym.Env):
         self.frames = []
 
     def get_observations(self):
-            # Return positions and orientations of all robots with the goal point
+            # Observation State [All robots]:
+            # x, y,theta, distance from hive
             obs = []
             for robot in self.robots:
-                obs.append(robot.get_state())
-            # TODO: add hive pose adn other stuff to the observation.
+                # obs.append(robot.get_state())
+                state = list(robot.get_state())
+                # Calculate the distance from the hive to the robot
+                distance_from_hive = np.linalg.norm(np.array([state[0], state[1]]) - np.array(self.hive))
+                # Append the new observation to the state
+                state.append(distance_from_hive)
+                obs.append(state)
+
             # # append the goal point to the observations
             # goal = np.array(self.goal_point + [0.0]) # add a dummy orientation
             # if self.gcm is not None:
@@ -554,14 +561,20 @@ class BeeSimEnv(gym.Env):
         return observation
 
     def unpack_observation(self, observation, remove_orientation=False):
-        # unpack the observation sublists into one list
+        # Flattens the observation sublists into one list, and optionally removes theta value from obs state.
         obs = []
-        for i in range(len(observation)):
-            obs.extend(observation[i])
-        if remove_orientation:
-            # remove every third element from the list as it is the orientation
-            obs = [val for idx, val in enumerate(obs) if (idx + 1) % 3 != 0]
-        else:
+        num_features = len(observation[0]) if len(observation) > 0 else 0  # Get feature count dynamically
+
+        for agent_obs in observation:
+            if remove_orientation and num_features >= 3:
+                # Remove the 3rd element (theta), keeping all other features
+                filtered_obs = [val for idx, val in enumerate(agent_obs) if idx != 2]
+            else:
+                filtered_obs = agent_obs  # Keep all features if remove_orientation is False
+
+            obs.extend(filtered_obs)  # Flatten into the final obs list
+        
+        if not remove_orientation:
             # pop the last element from the list as it is the orientation of the goal point
             obs.pop()
 
@@ -700,8 +713,8 @@ if __name__ == "__main__":
     robot_wheel_radius = 0.1
     robot_distance_between_wheels = 0.2
     max_wheel_velocity = 10.0
-    num_bees=32
-    num_sources=5
+    num_bees=4
+    num_sources=1
     render_mode = "human"
 
 
@@ -724,10 +737,13 @@ if __name__ == "__main__":
     #     observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
 
         # if render_mode == "human":
+    
+    # Reset environment and get initial observations
+    obs, info = env.reset()
+    print("Initial Observations:", obs)
+    
     while(True):
         env.render(mode="human", fps=60)
-        # elif render_mode == "offscreen":
-        #     env.render()
 
     #save video and reeset frames.
     # env.close()

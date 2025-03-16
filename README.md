@@ -32,6 +32,17 @@ pip install -r requirements.txt
 pip install --force-reinstall numpy
 ```
 
+4. To evalutate trained bees.
+```bash
+python3 multi_model_eval.py --model_path trained_models/model.zip
+```
+
+5. To train the bees.
+```bash
+python3 multi_model_train.py
+```
+
+
 ## Project Structure
 - [`multi_model_eval.py`](multi_model_eval.py): Evaluation script for trained RL models
 - [`multi_model_train.py`](multi_model_train.py): Training script for multi-agent shepherding models
