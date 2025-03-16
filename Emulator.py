@@ -754,6 +754,18 @@ if __name__ == "__main__":
     # Reset environment and get initial observations
     obs, info = env.reset()
     print("Initial Observations:", obs)
+
+    # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
+    # Here, we simply sample a random action from the defined action_space.
+    sample_action = env.action_space.sample()
+    print("Sample Action:", sample_action)
+
+    # Take a step in the environment using the sample action
+    new_obs, reward, terminated, truncated, info = env.step(sample_action)
+    print("New Observations:", new_obs)
+    print("Reward:", reward)
+
+    ############################################################  TEST ENV #########################################################
     
     while(True):
         env.render(mode="human", fps=60)
