@@ -301,14 +301,79 @@ class BeeSimEnv(gym.Env):
         elif self.action_mode == "multi":
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
 
+
+            # This is the action space defined for MARL Model.
             # action[0] is the x-coordinate of the point
             # action[1] is the y-coordinate of the point
             # map the actions from -1 to 1 to between the arena dimensions
+            # action[2] : dancing_action = 0: no dance, 1: dance
+            # action[3] : waggle_comm_action = 0: not observing, 1: observing
+
             action[0] = (action[0] + 1) * self.arena_length / 2
             action[1] = (action[1] + 1) * self.arena_width / 2
+            dancing_action = action[2]
+            waggle_comm_action = action[3]             
+            dance_intensity = 1
 
-            # get robot state
-            x, y, theta = self.robots[robot_id].get_state()
+
+            # These are the actual actions as seen in the simulator.
+            # Action 0: Move randomly
+            # Action 1: Move towards the target point: listning to the action of the bee
+            # Action 2: Wiggle dance
+            # Action 4: Gather nectar if near a nectar source
+            # Action 5: Return to the hive
+            # Action 6: Observe Waggle Dance
+
+
+            # Get robot state
+            x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm = self.robots[robot_id].get_state()
+
+
+
+            # Wiggle dance
+            if (dancing_action == 1):
+                self.wiggle_dance(robot_id=robot_id, theta=theta, point_dist=self.point_dist, dance_intensity=dance_intensity)
+                energy_level -= 1
+            # A bee is observing another bee dance
+            elif (waggle_comm_action == 1):
+                waggle_comm = 1
+                energy_level -= 1
+            # Reached nectar source and returning to hive.
+            elif (carrying_nectar == 1):
+                energy_level -= 1
+            # Guided exploration (listening to wiggle dance)
+            elif (waggle_comm ==1):
+                energy_level -= 1                                     
+            else:
+            # Gathering nectar
+                
+                # check if the bee is near a nectar source
+                for i in range(self.num_sources):
+                    source_x, source_y, source_radius = self.sources[i]
+                    # calculate the distance between the bee and the nectar source
+                    dist = np.linalg.norm(np.array([x, y]) - np.array([source_x, source_y]))
+                    if dist < source_radius:
+                        # Inside the nectar source, so gather nectar
+                        carrying_nectar = 1
+                        # TODO: Make it based on nectar source size.
+                        energy_level = 100
+                        break
+            # Bee is exploring   
+                else:
+                    # Not inside any nectar source, so move towards the target point
+                    # check if the bee is near the hive
+                    hive_dist = np.linalg.norm(np.array([x, y]) - np.array(self.hive))
+                    if hive_dist < self.hive_radius:
+                        carrying_nectar = 0
+                        energy_level -= 1
+                    else:
+                        carrying_nectar = 0
+
+                energy_level -= 1
+
+
+
+                 
 
             # calulate the position of the point that is controlled on the robot
             x = x + self.point_dist * np.cos(theta)
@@ -323,12 +388,38 @@ class BeeSimEnv(gym.Env):
             # update the sheep-dog position based on the wheel velocities
             self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
 
-            # clip the sheep-dog position if updated position is outside the arena
-            x, y, _ = self.robots[robot_id].get_state()
+
+
+
+
+
+
+
+
+            # clip the bee position if updated position is outside the arena.
+            x, y, _, _  = self.robots[robot_id].get_state()
             x = np.clip(x, 0.0, self.arena_length)
             y = np.clip(y, 0.0, self.arena_width)
             self.robots[robot_id].x = x
             self.robots[robot_id].y = y
+
+
+            self.robots[robot_id].update_state(dancing, carrying_nectar, energy_level, waggle_comm)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # Gather new observations (positions, orientations)
         # if not self.action_mode == "multi":
