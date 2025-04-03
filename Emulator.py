@@ -4,6 +4,8 @@ import numpy as np
 from robotEmulator import DifferentialDriveRobot
 import pygame
 import imageio as iio
+import math
+import time
 
 class BeeSimEnv(gym.Env):
     def __init__(self, arena_length, arena_width, num_bees, num_sources,
@@ -33,6 +35,8 @@ class BeeSimEnv(gym.Env):
         self.distance_between_wheels = robot_distance_between_wheels
         self.wheel_radius = robot_wheel_radius
         self.max_wheel_velocity = max_wheel_velocity
+        self.step_counter = 0
+
 
         # Environment parameters: these are hardcoded parameters that define the environment configurations.
         self.bee_ratio = 0.25 # ratio of forger bees to resting bees
@@ -68,14 +72,14 @@ class BeeSimEnv(gym.Env):
         
         if self.action_mode == "wheel" or self.action_mode == "vector":
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((self.num_forger_bees+ self.num_resting_bees) *4,), dtype=np.float32)
+                                                shape=((self.num_forger_bees+ self.num_resting_bees) *9,), dtype=np.float32)
         elif self.action_mode == "point":
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((self.num_forger_bees+ self.num_resting_bees) *3,), dtype=np.float32)
+                                                shape=((self.num_forger_bees+ self.num_resting_bees) *8,), dtype=np.float32)
         elif self.action_mode == "multi":
             # when action mode is multi, the env is configured as a single-forger, single-resting env
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((1 + 1)*3,), dtype=np.float32)
+                                                shape=((1 + 1)*9,), dtype=np.float32)
             self.action_count = 0 # counter to keep track of the number of sheep-dogs that have taken their actions
             # self.farthest_sheep = None # a list to keep track of the sheep farthest from the goal point 
 
@@ -215,7 +219,7 @@ class BeeSimEnv(gym.Env):
                 self.robots[i].update_position(left_wheel_velocity, right_wheel_velocity)
 
                 # clip the robot's position if updated position is outside the arena
-                x, y, _ = self.robots[i].get_state()
+                x, y, _, _  = self.robots[i].get_state()
                 x = np.clip(x, 0.0, self.arena_length)
                 y = np.clip(y, 0.0, self.arena_width)
                 self.robots[i].x = x
@@ -229,7 +233,7 @@ class BeeSimEnv(gym.Env):
                 desired_speed = (action[i * 2] + 1) * self.max_wheel_velocity / 2
 
                 # action[1] is the desired heading angle for the sheep-dogs between -1 and 1
-                x, y, theta = self.robots[i].get_state()
+                x, y, theta, _  = self.robots[i].get_state()
                 # scale to action to be between -pi and pi
                 action[i * 2 + 1] = action[i * 2 + 1] * np.pi
                 vec_desired = np.array([np.cos(action[i * 2 + 1]), np.sin(action[i * 2 + 1])])
@@ -242,7 +246,7 @@ class BeeSimEnv(gym.Env):
                 self.robots[i].update_position(wheel_velocities[0], wheel_velocities[1])
 
                 # clip the robot position if updated position is outside the arena
-                x, y, _ = self.robots[i].get_state()
+                x, y, _, _  = self.robots[i].get_state()
                 x = np.clip(x, 0.0, self.arena_length)
                 y = np.clip(y, 0.0, self.arena_width)
                 self.robots[i].x = x
@@ -368,7 +372,25 @@ class BeeSimEnv(gym.Env):
         info = {}
 
         return observations, self.reward, self.terminated, self.truncated, info
-    
+
+    def wiggle_dance(self, robot_id =0, theta=None, point_dist=None, dance_intensity=None):
+        self.robots[robot_id].dancing = True
+        if(self.robots[robot_id].dancing == True):
+            dt = 0.1
+            steps = int(30.0/ dt)
+            # # Orienting for the dance.
+            # self.theta = orientation
+            # for i in range(steps):
+            self.robots[robot_id].wiggle_dance(step_counter=self.step_counter, orientation=theta, distance=self.point_dist, intensity=dance_intensity)
+            self.step_counter = self.step_counter + 1
+
+            if self.step_counter >= steps:
+                # dance_state = "completed"
+                self.dancing = False
+                # TODO: Make the step counter robotid based dictionary
+                self.step_counter = 0
+                print("Dance completed")
+
     def render(self, mode=None, fps=1):
         # Initialize pygame if it hasn't been already
         if mode == "human":
@@ -412,17 +434,12 @@ class BeeSimEnv(gym.Env):
 
         # Plot robots
         for i, robot in enumerate(self.robots):
-            if i < self.num_forger_bees:
-                color = (255, 0, 0)  # Red for Foraging Bees.
-            # elif self.targeted:
-            #     if i in self.targeted:
-            #         color = (255, 0, 0) # Red for following bees : dont need colour distigtion for now
-            #     else:
-            #         color = (0, 255, 0)  # Green for Resting Bees.
-            else:
-                color = (0, 0, 255)  # Blue for Resting Bees.
+            robot_x, robot_y, robot_theta, robot_dancing ,_,_,_ = robot.get_state()  # Get robot position
 
-            robot_x, robot_y, robot_theta = robot.get_state()  # Get robot position
+            print(f"Robot State {i}: x = {robot_x}, y = {robot_y}, theta = {robot_theta}, dancing = {robot_dancing}")
+            
+            color = (0,0,255)  # Blue for All Bees.
+
             robot_x_px = int(robot_x * self.scale_factor)
             robot_y_px = self.arena_width_px - int(robot_y * self.scale_factor) # Flip y-axis
 
@@ -539,16 +556,29 @@ class BeeSimEnv(gym.Env):
         self.frames = []
 
     def get_observations(self):
-            # Observation State [All robots]:
-            # x, y,theta, distance from hive
+            # Observation State [All robots]:           
             obs = []
             for robot in self.robots:
                 # obs.append(robot.get_state())
                 state = list(robot.get_state())
+                
+                # Environmantal obs.
                 # Calculate the distance from the hive to the robot
                 distance_from_hive = np.linalg.norm(np.array([state[0], state[1]]) - np.array(self.hive))
+                direction_to_hive = math.atan(state[1]/state[0])  # Get the angle to the hive
                 # Append the new observation to the state
                 state.append(distance_from_hive)
+                state.append(direction_to_hive)  
+
+                # Waggle dance signal
+                # TODO: other should read, adn if reading should be a learnt behaviour. but if it reads, then what it reads is encoded here(fixed).
+
+                waggle_comm = state[6]
+                # if (waggle_comm)
+                # {
+                #     # Read the data.
+                #     # 
+                # }
                 obs.append(state)
 
             # # append the goal point to the observations
@@ -651,7 +681,7 @@ class BeeSimEnv(gym.Env):
             return True
         # # check if the sheep herd has reached the goal point
         # for i in range(self.num_sheepdogs, len(self.robots)):
-        #     x, y, _ = self.robots[i].get_state()
+        #     x, y, _ , _ = self.robots[i].get_state()
         #     dist = np.linalg.norm(np.array([x, y]) - np.array(self.goal_point))
         #     if dist > self.goal_tolreance:
         #         terminated = False
@@ -751,6 +781,9 @@ if __name__ == "__main__":
 
         # if render_mode == "human":
     
+    ############################################################  TEST ENV #########################################################
+
+
     # Reset environment and get initial observations
     obs, info = env.reset()
     print("Initial Observations:", obs)
@@ -768,7 +801,11 @@ if __name__ == "__main__":
     ############################################################  TEST ENV #########################################################
     
     while(True):
+        # env.render(mode="human", fps=60)
+        sample_action = env.action_space.sample()
+        new_obs, reward, terminated, truncated, info = env.step(sample_action)
         env.render(mode="human", fps=60)
+        # time.sleep(1)
 
     #save video and reeset frames.
     # env.close()
