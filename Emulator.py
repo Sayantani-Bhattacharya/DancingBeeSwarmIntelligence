@@ -203,9 +203,11 @@ class BeeSimEnv(gym.Env):
         """
         # check if the action is valid
         if not self.action_mode == "multi":
+            # Here action is of all agents
             assert len(action) == self.num_bees * 3, "Invalid action! Incorrect number of actions."
         else:
-            assert len(action) == 2, "Invalid action! Incorrect number of actions."
+            # Here action is of individual agent
+            assert len(action) == 4, "Invalid action! Incorrect number of actions."
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
 
         # Update pose of each bee using RL agent actions.
@@ -397,7 +399,7 @@ class BeeSimEnv(gym.Env):
 
 
             # clip the bee position if updated position is outside the arena.
-            x, y, _, _  = self.robots[robot_id].get_state()
+            x, y,_,_,_,_,_ = self.robots[robot_id].get_state()
             x = np.clip(x, 0.0, self.arena_length)
             y = np.clip(y, 0.0, self.arena_width)
             self.robots[robot_id].x = x
@@ -591,8 +593,7 @@ class BeeSimEnv(gym.Env):
         if self.action_mode == "multi":
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
         # Reset the environment
-        if self.action_mode != "multi":
-            
+        if self.action_mode != "multi":            
             # generate random initial positions within the arena if not provided
             if self.initial_positions is None:
                 initial_positions = []
@@ -629,6 +630,16 @@ class BeeSimEnv(gym.Env):
             obs = self.unpack_observation(obs, remove_orientation=True)
 
             return obs, info
+
+        else:
+            # Reseting in multi-robot cases.
+            info = {}
+            obs = self.get_multi_observations(robot_id)
+            obs = self.normalize_observation(obs)
+            obs = self.unpack_observation(obs, remove_orientation=True)
+
+            return obs, info
+
 
     def get_video_frames(self):
         frames = np.array(self.frames)
@@ -682,7 +693,38 @@ class BeeSimEnv(gym.Env):
             # pop the last element from the list as it is the orientation of the goal point
             # obs.pop()
             return np.array(obs)
+
+    def get_multi_observations(self, robot_id):
+        # Returns the observation of the robot with the given robot_id
+        # Observation State [All robots]:
+        obs = []
+        robot = self.robots[robot_id]
+        # obs.append(robot.get_state())
+        state = list(robot.get_state())
+        # Environmantal obs.
+        # Calculate the distance from the hive to the robot
+        distance_from_hive = np.linalg.norm(np.array([state[0], state[1]]) - np.array(self.hive))
+        direction_to_hive = math.atan(state[1]/state[0])  # Get the angle to the hive
+        # Append the new observation to the state
+        state.append(distance_from_hive)
+        state.append(direction_to_hive)
+        # Waggle dance signal
+        # TODO: other should read, adn if reading should be a learnt behaviour. but if it reads, then what it reads is encoded here(fixed).
+
+        waggle_comm = state[6]
+        # if (waggle_comm)
+        # {
+        #     # Read the data.
+        #     #
+        # }
+        obs.append(state)
     
+        return np.array(obs)
+
+
+
+
+
     def normalize_observation(self, observation):
         # Normalize the observations (both positions and orientations) 
         for i in range(len(observation)):
@@ -851,6 +893,15 @@ if __name__ == "__main__":
     num_sources=1
     render_mode = "human"
 
+    # Convert save_video to boolean
+    save_video = "true" 
+
+    # create a video directory if it does not exist
+    if save_video:
+        import os
+        if not os.path.exists("videos"):
+            os.makedirs("videos")
+
 
     env = BeeSimEnv(
             arena_length=arena_length,
@@ -860,7 +911,7 @@ if __name__ == "__main__":
             robot_distance_between_wheels=robot_distance_between_wheels,
             robot_wheel_radius=robot_wheel_radius,
             max_wheel_velocity=max_wheel_velocity,
-            action_mode="point",
+            action_mode="multi",
         )
     
     # for i in range(num_shepherds):
@@ -874,29 +925,58 @@ if __name__ == "__main__":
     
     ############################################################  TEST ENV #########################################################
 
+# Using sample action in-place of predicted action from the model.
 
     # Reset environment and get initial observations
-    obs, info = env.reset()
-    print("Initial Observations:", obs)
+    observations = {}
+    for id in range(num_bees):
+        # env.reset(robot_id=id)
+        observations[id], info = env.reset(robot_id=id)
+        terminated = False
+        truncated = False
+        episode_reward = 0
+        episode_length = 0
 
-    # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
-    # Here, we simply sample a random action from the defined action_space.
-    sample_action = env.action_space.sample()
-    print("Sample Action:", sample_action)
+        print("Initial Observations:", observations[id], " of robot id: ", id)
 
-    # Take a step in the environment using the sample action
-    new_obs, reward, terminated, truncated, info = env.step(sample_action)
-    print("New Observations:", new_obs)
-    print("Reward:", reward)
+
+        # Create a sample action vector for each bee
+        # Here, we simply sample a random action from the defined action_space.
+        sample_action = env.action_space.sample()
+        print("Sample Action:", sample_action, " of robot id: ", id)
+
+        # Take a step in the environment using the sample action
+        new_obs, reward, terminated, truncated, info = env.step(sample_action, robot_id=id)
+        print("New Observations:", new_obs, " of robot id: ", id)
+        print("Reward:", reward, " of robot id: ", id)
+
+
+
+
+
+    # # Single agent
+    # obs, info = env.reset()
+    # print("Initial Observations:", obs)
+
+    # # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
+    # # Here, we simply sample a random action from the defined action_space.
+    # sample_action = env.action_space.sample()
+    # print("Sample Action:", sample_action)
+
+    # # Take a step in the environment using the sample action
+    # new_obs, reward, terminated, truncated, info = env.step(sample_action)
+    # print("New Observations:", new_obs)
+    # print("Reward:", reward)
+    
 
     ############################################################  TEST ENV #########################################################
     
-    while(True):
-        # env.render(mode="human", fps=60)
-        sample_action = env.action_space.sample()
-        new_obs, reward, terminated, truncated, info = env.step(sample_action)
-        env.render(mode="human", fps=60)
-        # time.sleep(1)
+    # while(True):
+    #     # env.render(mode="human", fps=60)
+    #     sample_action = env.action_space.sample()
+    #     new_obs, reward, terminated, truncated, info = env.step(sample_action)
+    #     env.render(mode="human", fps=60)
+    #     # time.sleep(1)
 
     #save video and reeset frames.
     # env.close()
