@@ -408,24 +408,38 @@ class BeeSimEnv(gym.Env):
                     source_x, source_y, source_radius = self.sources[i]
                     # calculate the distance between the bee and the nectar source
                     dist = np.linalg.norm(np.array([x, y]) - np.array([source_x, source_y]))
-                    if dist < source_radius:
+                    if dist <= source_radius + self.goal_reaching_tollerance:
                         # Inside the nectar source, so gather nectar
                         print("[ROBOT STATE] Robot ID: ", robot_id, " Reached nector source, is gathering nectar from source: ", i)
                         carrying_nectar = 1
                         # TODO: Make it based on nectar source size.
                         energy_level += 100
+                        returning_hive = 1
                         # record which source this bee found
                         self.robots[robot_id].last_source_pose = (source_x, source_y)
                         break
                 
                 # Check if the bee is near the hive
                 hive_dist = np.linalg.norm(np.array([x, y]) - np.array(self.hive))                
-                if hive_dist < self.hive_radius:
+                if hive_dist <= self.hive_radius + self.goal_reaching_tollerance:
                     # Reached hive. Stop exploring.
                     carrying_nectar = 0
                     energy_level -= 1
+                    returning_hive = 0
                     print("[ROBOT STATE] Robot ID: ", robot_id, " Reached Hive with nectar!", i)
-
+                
+                elif (returning_hive == 1):
+                    energy_level -= 1   
+                    print("[ROBOT STATE] Robot ID: ", robot_id, " Returning to Hive!", i)
+                    # calulate the position of the point that is controlled on the robot
+                    x = x + self.point_dist * np.cos(theta)
+                    y = y + self.point_dist * np.sin(theta)
+                    # calculate the vector pointing towards the point
+                    vec_desired = np.array([self.hive[0] - x, self.hive[1] - y])
+                    # use the diff drive motion model to calculate the wheel velocities
+                    wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
+                    # update the sheep-dog position based on the wheel velocities
+                    self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
 
                 # Bee is exploring   
                 # Not inside any nectar source, so move towards the target point
