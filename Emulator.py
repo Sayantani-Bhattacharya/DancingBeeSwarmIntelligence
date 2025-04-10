@@ -444,7 +444,7 @@ class BeeSimEnv(gym.Env):
 
 
             # Clip the bee position if updated position is outside the arena.
-            x, y,_,_,_,_,_ = self.robots[robot_id].get_state()
+            x, y,_,_,_,_,_ ,_= self.robots[robot_id].get_state()
             x = np.clip(x, 0.0, self.arena_length)
             y = np.clip(y, 0.0, self.arena_width)
             self.robots[robot_id].x = x
@@ -970,65 +970,144 @@ if __name__ == "__main__":
             max_wheel_velocity=max_wheel_velocity,
             action_mode="multi",
         )
+
+
+
+#######################    DETERMINISTIC SCENARIO-BASED TESTING OF COMPLETE BEE STATE CYCLE    ###################################
+
+if __name__ == "__main__":
+    # Environment setup
+    env = BeeSimEnv(
+        arena_length=20,
+        arena_width=20,
+        num_bees=4,
+        num_sources=1,
+        robot_distance_between_wheels=0.2,
+        robot_wheel_radius=0.1,
+        max_wheel_velocity=10.0,
+        action_mode="multi",
+    )
+
+    # Place one nectar source manually
+    nectar_source = (6.0, 5.0, 1.0)  # x, y, radius
+    env.sources = [nectar_source]
+    env.hive = (1.0, 1.0)
+    env.hive_radius = 1.5
+
+    # Bee 0 will find nectar
+    robot_id_0 = 0
+    robot_id_1 = 1
+
+    env.robots[robot_id_0].x = 6.0
+    env.robots[robot_id_0].y = 5.0
+    env.robots[robot_id_1].x = 1.0
+    env.robots[robot_id_1].y = 1.0
+    print()
+    print("======== STEP 1: BEE 0 FINDS NECTAR =========")
+    action_find_nectar = [0.0, 0.0, 0, 0]  # No move needed — already at nectar
+    obs0, reward, _, _, _ = env.step(action_find_nectar, robot_id=robot_id_0)
+    print("Robot 0 State:", env.robots[robot_id_0].get_state())
+    assert env.robots[robot_id_0].carrying_nectar == 1, "Bee 0 should be carrying nectar."
+    print("=========================================================")
+    print()
+
+
+    print("======== STEP 2: BEE 0 RETURNS TO HIVE =========")
+    env.robots[robot_id_0].x = 1.0
+    env.robots[robot_id_0].y = 1.0
+    action_return_hive = [0.0, 0.0, 0, 0]  # Simply move into hive area
+    obs0, reward, _, _, _ = env.step(action_return_hive, robot_id=robot_id_0)
+    print("Robot 0 State:", env.robots[robot_id_0].get_state())
+    print("=========================================================")
+    print()
+
+
+    print("======== STEP 3: BEE 0 PERFORMS WIGGLE DANCE =========")
+    action_dance = [0.0, 0.0, 1, 0]  # Dance = 1
+    for _ in range(5):  # Run multiple steps to simulate full dance completion
+        obs0, reward, _, _, _ = env.step(action_dance, robot_id=robot_id_0)
+        print("Dance Info:", env.robots[robot_id_0].last_dance_info)
+
+    assert hasattr(env.robots[robot_id_0], 'last_dance_info'), "Dance info not stored."
+    print("Dance Info:", env.robots[robot_id_0].last_dance_info)
+    print("=========================================================")
+    print()
+    
+    
+    print("======== STEP 4: BEE 1 OBSERVES WIGGLE DANCE =========")
+    action_observe = [0.0, 0.0, 0, 1]  # Observe = 1
+    obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
+    print("Robot 1 State:", env.robots[robot_id_1].get_state())
+    print("=========================================================")
+    print()
+    
+    
+    print("======== STEP 5: BEE 1 STARTS MOVING TO SOURCE =========")
+    for _ in range(5):
+        obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
+        print("Robot 1 Pos:", (env.robots[robot_id_1].x, env.robots[robot_id_1].y))
+
+    final_pos = np.array([env.robots[robot_id_1].x, env.robots[robot_id_1].y])
+    target = np.array([nectar_source[0], nectar_source[1]])
+    dist = np.linalg.norm(final_pos - target)
+    print("Distance to nectar:", dist)
+    assert dist < 0.4, "Bee 1 should be near the nectar source."
+
+    print("✅ Test Passed: Full state loop for bee swarm works.")
+
+
+
+
+
+
+
+
+############################################################  TEST ENV #########################################################
+
+# # Using sample action in-place of predicted action from the model.
+
+#     # Reset environment and get initial observations
+#     observations = {}
+#     for id in range(num_bees):
+#         # env.reset(robot_id=id)
+#         observations[id], info = env.reset(robot_id=id)
+#         terminated = False
+#         truncated = False
+#         episode_reward = 0
+#         episode_length = 0
+
+#         print("Initial Observations:", observations[id], " of robot id: ", id)
+
+#         # Create a sample action vector for each bee
+#         # Here, we simply sample a random action from the defined action_space.
+#         sample_action = env.action_space.sample()
+#         print("Sample Action:", sample_action, " of robot id: ", id)
+
+#         # Take a step in the environment using the sample action
+#         new_obs, reward, terminated, truncated, info = env.step(sample_action, robot_id=id)
+#         print("New Observations:", new_obs, " of robot id: ", id)
+#         print("Reward:", reward, " of robot id: ", id)
+
+#     # # Single agent
+#     # obs, info = env.reset()
+#     # print("Initial Observations:", obs)
+
+#     # # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
+#     # # Here, we simply sample a random action from the defined action_space.
+#     # sample_action = env.action_space.sample()
+#     # print("Sample Action:", sample_action)
+
+#     # # Take a step in the environment using the sample action
+#     # new_obs, reward, terminated, truncated, info = env.step(sample_action)
+#     # print("New Observations:", new_obs)
+#     # print("Reward:", reward)
     
 
-    # for i in range(num_bees):
-    #     action, _ = models[i].predict(observations[i], deterministic=False)
-    #     observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
-
-        # if render_mode == "human":
+#     ############################################################  TEST ENV #########################################################
     
-    ############################################################  TEST ENV #########################################################
-
-# Using sample action in-place of predicted action from the model.
-
-    # Reset environment and get initial observations
-    observations = {}
-    for id in range(num_bees):
-        # env.reset(robot_id=id)
-        observations[id], info = env.reset(robot_id=id)
-        terminated = False
-        truncated = False
-        episode_reward = 0
-        episode_length = 0
-
-        print("Initial Observations:", observations[id], " of robot id: ", id)
-
-
-        # Create a sample action vector for each bee
-        # Here, we simply sample a random action from the defined action_space.
-        sample_action = env.action_space.sample()
-        print("Sample Action:", sample_action, " of robot id: ", id)
-
-        # Take a step in the environment using the sample action
-        new_obs, reward, terminated, truncated, info = env.step(sample_action, robot_id=id)
-        print("New Observations:", new_obs, " of robot id: ", id)
-        print("Reward:", reward, " of robot id: ", id)
-
-
-
-
-
-    # # Single agent
-    # obs, info = env.reset()
-    # print("Initial Observations:", obs)
-
-    # # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
-    # # Here, we simply sample a random action from the defined action_space.
-    # sample_action = env.action_space.sample()
-    # print("Sample Action:", sample_action)
-
-    # # Take a step in the environment using the sample action
-    # new_obs, reward, terminated, truncated, info = env.step(sample_action)
-    # print("New Observations:", new_obs)
-    # print("Reward:", reward)
-    
-
-    ############################################################  TEST ENV #########################################################
-    
-    # while(True):
-    #     # env.render(mode="human", fps=60)
-    #     sample_action = env.action_space.sample()
-    #     new_obs, reward, terminated, truncated, info = env.step(sample_action)
-    #     env.render(mode="human", fps=60)
-    #     # time.sleep(1)
+#     # while(True):
+#     #     # env.render(mode="human", fps=60)
+#     #     sample_action = env.action_space.sample()
+#     #     new_obs, reward, terminated, truncated, info = env.step(sample_action)
+#     #     env.render(mode="human", fps=60)
+#     #     # time.sleep(1)
