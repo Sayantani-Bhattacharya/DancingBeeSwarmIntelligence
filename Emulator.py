@@ -342,6 +342,8 @@ class BeeSimEnv(gym.Env):
 
                 
             # A bee is observing another bee dance.
+            # waggle_comm is used to manage action states via code.
+            # waggle_comm_action is the action state managed by the RL model.
             elif (waggle_comm_action == 1):
                 waggle_comm = 1
                 energy_level -= 1
@@ -356,6 +358,8 @@ class BeeSimEnv(gym.Env):
                 # Guided exploration (listening to wiggle dance)
                 if (observed_robot_id != None):
                     # desitination calculated from distance, and orientation of the bee that is dancing.
+                    print("[ROBOT STATE] Robot ID: ", robot_id, " is observing the wiggle dance of the bee ID: ", observed_robot_id)
+
                     desination_x, desination_y = self.read_wiggle(observed_robot_id)
 
                     # calulate the position of the point that is controlled on the robot
@@ -458,7 +462,7 @@ class BeeSimEnv(gym.Env):
 
 
             # Clip the bee position if updated position is outside the arena.
-            x, y,_,_,_,_,_ ,_= self.robots[robot_id].get_state()
+            x, y,_,dancing,_,_,_ ,_= self.robots[robot_id].get_state()
             x = np.clip(x, 0.0, self.arena_length)
             y = np.clip(y, 0.0, self.arena_width)
             self.robots[robot_id].x = x
@@ -521,11 +525,11 @@ class BeeSimEnv(gym.Env):
             # self.theta = orientation
             # for i in range(steps):
             self.robots[robot_id].wiggle_dance(step_counter=self.robots[robot_id].dance_step_counter, orientation=theta, distance=self.point_dist, intensity=dance_intensity)
-            self.robots[robot_id].dance_step_counter = self.robots[robot_id].dance_step_counter + 1
+            # self.robots[robot_id].dance_step_counter = self.robots[robot_id].dance_step_counter + 1
             
             ############### may need to change this here.
-            if hasattr(self.robots[robot_id], 'last_source'):
-                src_x, src_y = self.robots[robot_id].last_source
+            if hasattr(self.robots[robot_id], 'last_source_pose'):
+                src_x, src_y = self.robots[robot_id].last_source_pose
             else:
                 # If the robot is dancing, without being to a source, give the position value as -100, -100.
                 src_x, src_y = -100, -100
@@ -535,24 +539,28 @@ class BeeSimEnv(gym.Env):
                 'dest_x': src_x,
                 'dest_y': src_y,
                 'intensity': dance_intensity,
+                ########## For testing Step 3 Demo, can set the count to 1.
                 'count' : 3  # This is the max robots that can read the dance: stopping condition.
             }
+            self.robots[robot_id].last_dance_info = last_dance_info
 
-            if self.robots[robot_id].dance_step_counter >= steps:
-                # dance_state = "completed"
-                self.robots[robot_id].dance_step_counter = 0
-                self.robots[robot_id].dancing = False
-                self.robots[robot_id].last_dance_info = last_dance_info
-                print("Dance completed")
+            # if self.robots[robot_id].dance_step_counter >= steps:  # Timer based dance duration.
+            if hasattr(self.robots[robot_id], 'last_dance_info'):
+                max_count = self.robots[robot_id].last_dance_info['count']
+                if self.robots[robot_id].dance_step_counter >= max_count: 
+                    # dance_state = "completed"
+                    self.robots[robot_id].dance_step_counter = 0
+                    self.robots[robot_id].dancing = False
+                    self.robots[robot_id].last_dance_info = last_dance_info
+                    print("Dance completed")
 
     def read_wiggle(self, observed_robot_id):
-        if hasattr(self.robots[observed_robot_id], 'count') > 0:
-            # Here robot id is the id of the bee is being observed.
-            if hasattr(self.robots[observed_robot_id], 'last_dance_info'):
-                self.robots[observed_robot_id].last_dance_info['count'] -= 1
-                return self.robots[observed_robot_id].last_dance_info['dest_x'], self.robots[observed_robot_id].last_dance_info['dest_y']
-            else:
-                return None, None
+        if hasattr(self.robots[observed_robot_id], 'dance_step_counter') > 0:
+            # Here observed robot id is the id of the bee is being observed.
+            self.robots[observed_robot_id].dance_step_counter = self.robots[observed_robot_id].dance_step_counter + 1
+            return self.robots[observed_robot_id].last_dance_info['dest_x'], self.robots[observed_robot_id].last_dance_info['dest_y']
+            # else:
+            #     return None, None
         else:
             x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm, returning_hive = self.robots[observed_robot_id].get_state()
             dancing = 0 
@@ -1048,29 +1056,39 @@ if __name__ == "__main__":
     print()
     
     
-    print("======== STEP 4: BEE 1 OBSERVES WIGGLE DANCE =========")
+    print("======== STEP 4: BEE 1 SUCCESSFULLY OBSERVES WIGGLE DANCE =========")
     action_observe = [0.0, 0.0, 0, 1]  # Observe = 1
     obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
     print("Robot 1 State:", env.robots[robot_id_1].get_state())
     print("=========================================================")
     print()
-    
-    
-    print("======== STEP 5: BEE 1 STARTS MOVING TO SOURCE =========")
-    for _ in range(5):
+
+    # print("======== STEP 5: BEE 1 SUCCESSFULLY OBSERVES WIGGLE DANCE  =========")
+    # action_dance = [0.0, 0.0, 1, 0]  # Dance = 1
+    # obs0, reward, _, _, _ = env.step(action_dance, robot_id=robot_id_0)
+    # action_observe = [0.0, 0.0, 0, 1]  # Observe = 1
+    # obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
+    # print("Robot 1 State:", env.robots[robot_id_1].get_state())
+    # print("=========================================================")
+    # print()
+        
+
+    print("======== STEP 6: BEE 1 STARTS MOVING TO SOURCE =========")
+    for _ in range(75):
         obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
-        print("Robot 1 Pos:", (env.robots[robot_id_1].x, env.robots[robot_id_1].y))
+        # print("Robot 1 Pos:", (env.robots[robot_id_1].x, env.robots[robot_id_1].y))
 
     final_pos = np.array([env.robots[robot_id_1].x, env.robots[robot_id_1].y])
     target = np.array([nectar_source[0], nectar_source[1]])
     dist = np.linalg.norm(final_pos - target)
     print("Distance to nectar:", dist)
+
     assert dist < 0.4, "Bee 1 should be near the nectar source."
 
     print("✅ Test Passed: Full state loop for bee swarm works.")
 
 
-
+# Tested the loop for STEP 4: BEE 1 OBSERVES WIGGLE DANCE: BUT NO DANCING BEE PRESENT 
 
 
 
