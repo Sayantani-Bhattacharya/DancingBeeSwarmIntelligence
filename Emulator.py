@@ -35,7 +35,10 @@ class BeeSimEnv(gym.Env):
         self.distance_between_wheels = robot_distance_between_wheels
         self.wheel_radius = robot_wheel_radius
         self.max_wheel_velocity = max_wheel_velocity
-        self.step_counter = 0
+        # self.step_counter = 0
+        # Tollerance distance to consider the bee reached its destination.
+        self.goal_reaching_tollerance = 0.4
+
 
 
         # Environment parameters: these are hardcoded parameters that define the environment configurations.
@@ -203,9 +206,11 @@ class BeeSimEnv(gym.Env):
         """
         # check if the action is valid
         if not self.action_mode == "multi":
+            # Here action is of all agents
             assert len(action) == self.num_bees * 3, "Invalid action! Incorrect number of actions."
         else:
-            assert len(action) == 2, "Invalid action! Incorrect number of actions."
+            # Here action is of individual agent
+            assert len(action) == 4, "Invalid action! Incorrect number of actions."
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
 
         # Update pose of each bee using RL agent actions.
@@ -268,10 +273,12 @@ class BeeSimEnv(gym.Env):
                 target_y = (action[i * 3 + 1] + 1) * self.arena_width / 2
                 dance_intensity = action[i * 3 + 2] 
 
+                # if dancing, dance(state orientation, which source, intensity) and then move to the target point
+
 
 
                 # get robot state
-                x, y, theta = self.robots[i].get_state()
+                x, y, theta,_,_,_,_ = self.robots[i].get_state()
 
                 # calulate the position of the point that is controlled on the robot
                 x = x + self.point_dist * np.cos(theta)
@@ -280,18 +287,18 @@ class BeeSimEnv(gym.Env):
                 # calculate the vector pointing towards the point
                 vec_desired = np.array([target_x - x, target_y - y])
 
-                # (Optionally) Use dance_intensity to modify behavior. For now, we simply print it.
-                # TODO:  You can later incorporate it into your motion model or reward.
-                print(f"Robot {i}: Dance intensity = {dance_intensity}")
-
+                #TODO: if any robot is dancing true state of action, then do this here
+                self.wiggle_dance(robot_id=0, theta=theta, point_dist=self.point_dist, dance_intensity=dance_intensity)
+                
                 # use the diff drive motion model to calculate the wheel velocities
                 wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
 
                 # update the bee position based on the wheel velocities
-                self.robots[i].update_position(wheel_velocities[0], wheel_velocities[1])
+                if (i != 0):
+                    self.robots[i].update_position(wheel_velocities[0], wheel_velocities[1])
 
-                # clip the bee position if updated position is outside the arena
-                x, y, _ = self.robots[i].get_state()
+                # Clip the bee position if updated position is outside the arena
+                x, y, _,_,_,_,_  = self.robots[i].get_state()
                 x = np.clip(x, 0.0, self.arena_length)
                 y = np.clip(y, 0.0, self.arena_width)
                 self.robots[i].x = x
@@ -300,7 +307,6 @@ class BeeSimEnv(gym.Env):
         # Physics is same as the point action mode[target coordinate to wheel velocities], but the action is taken by a only the specified robotId and not all the bees.
         elif self.action_mode == "multi":
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
-
 
             # This is the action space defined for MARL Model.
             # action[0] is the x-coordinate of the point
@@ -326,98 +332,144 @@ class BeeSimEnv(gym.Env):
 
 
             # Get robot state
-            x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm = self.robots[robot_id].get_state()
+            x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm, returning_hive = self.robots[robot_id].get_state()
 
 
-
-            # Wiggle dance
+            # Wiggle dance.
             if (dancing_action == 1):
                 self.wiggle_dance(robot_id=robot_id, theta=theta, point_dist=self.point_dist, dance_intensity=dance_intensity)
                 energy_level -= 1
-            # A bee is observing another bee dance
+
+                
+            # A bee is observing another bee dance.
+            # waggle_comm is used to manage action states via code.
+            # waggle_comm_action is the action state managed by the RL model.
             elif (waggle_comm_action == 1):
                 waggle_comm = 1
                 energy_level -= 1
-            # Reached nectar source and returning to hive.
-            elif (carrying_nectar == 1):
-                energy_level -= 1
-            # Guided exploration (listening to wiggle dance)
-            elif (waggle_comm ==1):
-                energy_level -= 1                                     
+
+                # Find which bee is dancing now. (Assuming: only one bee is dancing at a time)
+                observed_robot_id = None
+                for other_id, bee in enumerate(self.robots):
+                    if other_id != robot_id and bee.dancing:
+                        observed_robot_id = other_id
+                        break
+                    
+                # Guided exploration (listening to wiggle dance)
+                if (observed_robot_id != None):
+                    # desitination calculated from distance, and orientation of the bee that is dancing.
+                    print("[ROBOT STATE] Robot ID: ", robot_id, " is observing the wiggle dance of the bee ID: ", observed_robot_id)
+
+                    desination_x, desination_y = self.read_wiggle(observed_robot_id)
+
+                    # calulate the position of the point that is controlled on the robot
+                    x = x + self.point_dist * np.cos(theta)
+                    y = y + self.point_dist * np.sin(theta)
+                    # calculate the vector pointing towards the point
+                    vec_desired = np.array([desination_x - x, desination_y - y])
+                    # use the diff drive motion model to calculate the wheel velocities
+                    wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
+                    # update the sheep-dog position based on the wheel velocities
+                    self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
+
+                    # If the bee reached the destination as mentioned by the dance.
+                    dist = np.linalg.norm(np.array([x, y]) - np.array([desination_x, desination_y]))
+                    if (dist < self.goal_reaching_tollerance):
+                        print("[ROBOT STATE] Robot ID: ", robot_id, " Reached nector source from dance observation!")
+                        energy_level += 100
+                        carrying_nectar == 1 
+                        waggle_comm = 0   # Communication is done.
+                        returning_hive = 1
+
+                else:
+                        print("[ROBOT STATE] Robot ID: ", robot_id, "No Dancing Bee to be observed by the robot id: ")
+                
+
+            # # Reached nectar source and Returning to hive.
+            # elif (carrying_nectar == 1 and returning_hive != 1):
+            #     energy_level -= 1
+            #     # calulate the position of the point that is controlled on the robot.
+            #     x = x + self.point_dist * np.cos(theta)
+            #     y = y + self.point_dist * np.sin(theta)
+            #     # calculate the vector pointing towards the point
+            #     vec_desired = np.array([self.hive[0] - x, self.hive[1] - y])
+            #     # use the diff drive motion model to calculate the wheel velocities
+            #     wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
+            #     # update the sheep-dog position based on the wheel velocities
+            #     self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
+            #     dist = np.linalg.norm(np.array([x, y]) - np.array([self.hive[0], self.hive[1]]))
+                
+            #     if (dist < self.goal_reaching_tollerance):
+            #         returning_hive = 1
+            #         print("[ROBOT STATE] Robot ID: ", robot_id, " Reached nector source, transitioning state here")
+
+
             else:
             # Gathering nectar
                 
-                # check if the bee is near a nectar source
+                # Check if the bee is near a nectar source.
                 for i in range(self.num_sources):
                     source_x, source_y, source_radius = self.sources[i]
                     # calculate the distance between the bee and the nectar source
                     dist = np.linalg.norm(np.array([x, y]) - np.array([source_x, source_y]))
-                    if dist < source_radius:
+                    if dist <= source_radius + self.goal_reaching_tollerance:
                         # Inside the nectar source, so gather nectar
+                        print("[ROBOT STATE] Robot ID: ", robot_id, " Reached nector source, is gathering nectar from source: ", i)
                         carrying_nectar = 1
                         # TODO: Make it based on nectar source size.
-                        energy_level = 100
+                        energy_level += 100
+                        returning_hive = 1
+                        # record which source this bee found
+                        self.robots[robot_id].last_source_pose = (source_x, source_y)
                         break
-            # Bee is exploring   
+                
+                # Check if the bee is near the hive
+                hive_dist = np.linalg.norm(np.array([x, y]) - np.array(self.hive))                
+                if hive_dist <= self.hive_radius + self.goal_reaching_tollerance:
+                    # Reached hive. Stop exploring.
+                    carrying_nectar = 0
+                    energy_level -= 1
+                    returning_hive = 0
+                    print("[ROBOT STATE] Robot ID: ", robot_id, " Reached Hive with nectar!", i)
+                
+                elif (returning_hive == 1):
+                    energy_level -= 1   
+                    print("[ROBOT STATE] Robot ID: ", robot_id, " Returning to Hive!", i)
+                    # calulate the position of the point that is controlled on the robot
+                    x = x + self.point_dist * np.cos(theta)
+                    y = y + self.point_dist * np.sin(theta)
+                    # calculate the vector pointing towards the point
+                    vec_desired = np.array([self.hive[0] - x, self.hive[1] - y])
+                    # use the diff drive motion model to calculate the wheel velocities
+                    wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
+                    # update the sheep-dog position based on the wheel velocities
+                    self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
+
+                # Bee is exploring   
+                # Not inside any nectar source, so move towards the target point
                 else:
-                    # Not inside any nectar source, so move towards the target point
-                    # check if the bee is near the hive
-                    hive_dist = np.linalg.norm(np.array([x, y]) - np.array(self.hive))
-                    if hive_dist < self.hive_radius:
-                        carrying_nectar = 0
-                        energy_level -= 1
-                    else:
-                        carrying_nectar = 0
-
-                energy_level -= 1
-
-
-
-                 
-
-            # calulate the position of the point that is controlled on the robot
-            x = x + self.point_dist * np.cos(theta)
-            y = y + self.point_dist * np.sin(theta)
-
-            # calculate the vector pointing towards the point
-            vec_desired = np.array([action[0] - x, action[1] - y])
-
-            # use the diff drive motion model to calculate the wheel velocities
-            wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
-
-            # update the sheep-dog position based on the wheel velocities
-            self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
+                    energy_level -= 1   
+                    print("[ROBOT STATE] Robot ID: ", robot_id, " Exploring!", i)
+                    # calulate the position of the point that is controlled on the robot
+                    x = x + self.point_dist * np.cos(theta)
+                    y = y + self.point_dist * np.sin(theta)
+                    # calculate the vector pointing towards the point
+                    vec_desired = np.array([action[0] - x, action[1] - y])
+                    # use the diff drive motion model to calculate the wheel velocities
+                    wheel_velocities = self.diff_drive_motion_model(vec_desired, [x, y, theta], self.max_wheel_velocity)
+                    # update the sheep-dog position based on the wheel velocities
+                    self.robots[robot_id].update_position(wheel_velocities[0], wheel_velocities[1])
 
 
-
-
-
-
-
-
-
-            # clip the bee position if updated position is outside the arena.
-            x, y, _, _  = self.robots[robot_id].get_state()
+            # Clip the bee position if updated position is outside the arena.
+            x, y,_,dancing,_,_,_ ,_= self.robots[robot_id].get_state()
             x = np.clip(x, 0.0, self.arena_length)
             y = np.clip(y, 0.0, self.arena_width)
             self.robots[robot_id].x = x
             self.robots[robot_id].y = y
 
 
-            self.robots[robot_id].update_state(dancing, carrying_nectar, energy_level, waggle_comm)
-
-
-
-
-
-
-
-
-
-
-
-
-
+            self.robots[robot_id].update_state(dancing=dancing, carrying_nectar=carrying_nectar, energy_level=energy_level, waggle_comm=waggle_comm, returning_hive=returning_hive)
 
 
 
@@ -472,15 +524,50 @@ class BeeSimEnv(gym.Env):
             # # Orienting for the dance.
             # self.theta = orientation
             # for i in range(steps):
-            self.robots[robot_id].wiggle_dance(step_counter=self.step_counter, orientation=theta, distance=self.point_dist, intensity=dance_intensity)
-            self.step_counter = self.step_counter + 1
+            self.robots[robot_id].wiggle_dance(step_counter=self.robots[robot_id].dance_step_counter, orientation=theta, distance=self.point_dist, intensity=dance_intensity)
+            # self.robots[robot_id].dance_step_counter = self.robots[robot_id].dance_step_counter + 1
+            
+            ############### may need to change this here.
+            if hasattr(self.robots[robot_id], 'last_source_pose'):
+                src_x, src_y = self.robots[robot_id].last_source_pose
+            else:
+                # If the robot is dancing, without being to a source, give the position value as -100, -100.
+                src_x, src_y = -100, -100
 
-            if self.step_counter >= steps:
-                # dance_state = "completed"
-                self.dancing = False
-                # TODO: Make the step counter robotid based dictionary
-                self.step_counter = 0
-                print("Dance completed")
+            last_dance_info = {
+                'dancer': robot_id,
+                'dest_x': src_x,
+                'dest_y': src_y,
+                'intensity': dance_intensity,
+                ########## For testing Step 3 Demo, can set the count to 1.
+                'count' : 3  # This is the max robots that can read the dance: stopping condition.
+            }
+            self.robots[robot_id].last_dance_info = last_dance_info
+
+            # if self.robots[robot_id].dance_step_counter >= steps:  # Timer based dance duration.
+            if hasattr(self.robots[robot_id], 'last_dance_info'):
+                max_count = self.robots[robot_id].last_dance_info['count']
+                if self.robots[robot_id].dance_step_counter >= max_count: 
+                    # dance_state = "completed"
+                    self.robots[robot_id].dance_step_counter = 0
+                    self.robots[robot_id].dancing = False
+                    self.robots[robot_id].last_dance_info = last_dance_info
+                    print("Dance completed")
+
+    def read_wiggle(self, observed_robot_id):
+        if hasattr(self.robots[observed_robot_id], 'dance_step_counter') > 0:
+            # Here observed robot id is the id of the bee is being observed.
+            self.robots[observed_robot_id].dance_step_counter = self.robots[observed_robot_id].dance_step_counter + 1
+            return self.robots[observed_robot_id].last_dance_info['dest_x'], self.robots[observed_robot_id].last_dance_info['dest_y']
+            # else:
+            #     return None, None
+        else:
+            x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm, returning_hive = self.robots[observed_robot_id].get_state()
+            dancing = 0 
+            print("[ROBOT STATE] Robot ID: ", observed_robot_id, " This bee is tired of dancing!")
+            self.robots[observed_robot_id].update_state(dancing=dancing, carrying_nectar=carrying_nectar, energy_level=energy_level, waggle_comm=waggle_comm, returning_hive=returning_hive)
+            return None, None
+
 
     def render(self, mode=None, fps=1):
         # Initialize pygame if it hasn't been already
@@ -586,13 +673,11 @@ class BeeSimEnv(gym.Env):
                 self.targeted = None
 
     def reset(self, seed=None, options=None, robot_id = None):
-        # TODO: add reset logic for multi action mode.
         super().reset(seed=seed)
         if self.action_mode == "multi":
             assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
         # Reset the environment
-        if self.action_mode != "multi":
-            
+        if self.action_mode != "multi":            
             # generate random initial positions within the arena if not provided
             if self.initial_positions is None:
                 initial_positions = []
@@ -603,7 +688,7 @@ class BeeSimEnv(gym.Env):
                     initial_positions.append([x, y, theta])
                 # Initislise resting bees at the position inside the hive.
                 for _ in range(self.num_resting_bees):
-                    r = np.random.uniform(0, self.hive_radius)  
+                    r = np.random.uniform(0, self.hive_raself.hivedius)  
                     theta_angle = np.random.uniform(0, 2 * np.pi)  
                     x = self.hive[0] + r * np.cos(theta_angle) 
                     y = self.hive[1] + r * np.sin(theta_angle)                
@@ -625,6 +710,15 @@ class BeeSimEnv(gym.Env):
 
             info = {}
             obs = self.get_observations()
+            obs = self.normalize_observation(obs)
+            obs = self.unpack_observation(obs, remove_orientation=True)
+
+            return obs, info
+
+        else:
+            # Reseting in multi-robot cases.
+            info = {}
+            obs = self.get_multi_observations(robot_id)
             obs = self.normalize_observation(obs)
             obs = self.unpack_observation(obs, remove_orientation=True)
 
@@ -682,7 +776,34 @@ class BeeSimEnv(gym.Env):
             # pop the last element from the list as it is the orientation of the goal point
             # obs.pop()
             return np.array(obs)
+
+    def get_multi_observations(self, robot_id):
+        # Returns the observation of the robot with the given robot_id
+        # Observation State [All robots]:
+        obs = []
+        robot = self.robots[robot_id]
+        # obs.append(robot.get_state())
+        state = list(robot.get_state())
+        # Environmantal obs.
+        # Calculate the distance from the hive to the robot
+        distance_from_hive = np.linalg.norm(np.array([state[0], state[1]]) - np.array(self.hive))
+        direction_to_hive = math.atan(state[1]/state[0])  # Get the angle to the hive
+        # Append the new observation to the state
+        state.append(distance_from_hive)
+        state.append(direction_to_hive)
+        # Waggle dance signal
+        # TODO: other should read, adn if reading should be a learnt behaviour. but if it reads, then what it reads is encoded here(fixed).
+
+        waggle_comm = state[6]
+        # if (waggle_comm)
+        # {
+        #     # Read the data.
+        #     #
+        # }
+        obs.append(state)
     
+        return np.array(obs)
+
     def normalize_observation(self, observation):
         # Normalize the observations (both positions and orientations) 
         for i in range(len(observation)):
@@ -851,6 +972,15 @@ if __name__ == "__main__":
     num_sources=1
     render_mode = "human"
 
+    # Convert save_video to boolean
+    save_video = "true" 
+
+    # create a video directory if it does not exist
+    if save_video:
+        import os
+        if not os.path.exists("videos"):
+            os.makedirs("videos")
+
 
     env = BeeSimEnv(
             arena_length=arena_length,
@@ -860,43 +990,156 @@ if __name__ == "__main__":
             robot_distance_between_wheels=robot_distance_between_wheels,
             robot_wheel_radius=robot_wheel_radius,
             max_wheel_velocity=max_wheel_velocity,
-            action_mode="point",
+            action_mode="multi",
         )
+
+
+
+#######################    DETERMINISTIC SCENARIO-BASED TESTING OF COMPLETE BEE STATE CYCLE    ###################################
+
+if __name__ == "__main__":
+    # Environment setup
+    env = BeeSimEnv(
+        arena_length=20,
+        arena_width=20,
+        num_bees=4,
+        num_sources=1,
+        robot_distance_between_wheels=0.2,
+        robot_wheel_radius=0.1,
+        max_wheel_velocity=10.0,
+        action_mode="multi",
+    )
+
+    # Place one nectar source manually
+    nectar_source = (6.0, 5.0, 1.0)  # x, y, radius
+    env.sources = [nectar_source]
+    env.hive = (1.0, 1.0)
+    env.hive_radius = 1.5
+
+    # Bee 0 will find nectar
+    robot_id_0 = 0
+    robot_id_1 = 1
+
+    env.robots[robot_id_0].x = 6.0
+    env.robots[robot_id_0].y = 5.0
+    env.robots[robot_id_1].x = 1.0
+    env.robots[robot_id_1].y = 1.0
+    print()
+    print("======== STEP 1: BEE 0 FINDS NECTAR =========")
+    action_find_nectar = [0.0, 0.0, 0, 0]  # No move needed — already at nectar
+    obs0, reward, _, _, _ = env.step(action_find_nectar, robot_id=robot_id_0)
+    print("Robot 0 State:", env.robots[robot_id_0].get_state())
+    assert env.robots[robot_id_0].carrying_nectar == 1, "Bee 0 should be carrying nectar."
+    print("=========================================================")
+    print()
+
+
+    print("======== STEP 2: BEE 0 RETURNS TO HIVE =========")
+    env.robots[robot_id_0].x = 1.0
+    env.robots[robot_id_0].y = 1.0
+    action_return_hive = [0.0, 0.0, 0, 0]  # Simply move into hive area
+    obs0, reward, _, _, _ = env.step(action_return_hive, robot_id=robot_id_0)
+    print("Robot 0 State:", env.robots[robot_id_0].get_state())
+    print("=========================================================")
+    print()
+
+
+    print("======== STEP 3: BEE 0 PERFORMS WIGGLE DANCE =========")
+    action_dance = [0.0, 0.0, 1, 0]  # Dance = 1
+    for _ in range(5):  # Run multiple steps to simulate full dance completion
+        obs0, reward, _, _, _ = env.step(action_dance, robot_id=robot_id_0)
+        print("Dance Info:", env.robots[robot_id_0].last_dance_info)
+
+    assert hasattr(env.robots[robot_id_0], 'last_dance_info'), "Dance info not stored."
+    print("Dance Info:", env.robots[robot_id_0].last_dance_info)
+    print("=========================================================")
+    print()
     
-    # for i in range(num_shepherds):
-    #     env.reset(robot_id=i)
-
-    # for i in range(num_bees):
-    #     action, _ = models[i].predict(observations[i], deterministic=False)
-    #     observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
-
-        # if render_mode == "human":
     
-    ############################################################  TEST ENV #########################################################
+    print("======== STEP 4: BEE 1 SUCCESSFULLY OBSERVES WIGGLE DANCE =========")
+    action_observe = [0.0, 0.0, 0, 1]  # Observe = 1
+    obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
+    print("Robot 1 State:", env.robots[robot_id_1].get_state())
+    print("=========================================================")
+    print()
+
+    # print("======== STEP 5: BEE 1 SUCCESSFULLY OBSERVES WIGGLE DANCE  =========")
+    # action_dance = [0.0, 0.0, 1, 0]  # Dance = 1
+    # obs0, reward, _, _, _ = env.step(action_dance, robot_id=robot_id_0)
+    # action_observe = [0.0, 0.0, 0, 1]  # Observe = 1
+    # obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
+    # print("Robot 1 State:", env.robots[robot_id_1].get_state())
+    # print("=========================================================")
+    # print()
+        
+
+    print("======== STEP 6: BEE 1 STARTS MOVING TO SOURCE =========")
+    for _ in range(75):
+        obs1, reward, _, _, _ = env.step(action_observe, robot_id=robot_id_1)
+        # print("Robot 1 Pos:", (env.robots[robot_id_1].x, env.robots[robot_id_1].y))
+
+    final_pos = np.array([env.robots[robot_id_1].x, env.robots[robot_id_1].y])
+    target = np.array([nectar_source[0], nectar_source[1]])
+    dist = np.linalg.norm(final_pos - target)
+    print("Distance to nectar:", dist)
+
+    assert dist < 0.4, "Bee 1 should be near the nectar source."
+
+    print("✅ Test Passed: Full state loop for bee swarm works.")
 
 
-    # Reset environment and get initial observations
-    obs, info = env.reset()
-    print("Initial Observations:", obs)
+# Tested the loop for STEP 4: BEE 1 OBSERVES WIGGLE DANCE: BUT NO DANCING BEE PRESENT 
 
-    # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
-    # Here, we simply sample a random action from the defined action_space.
-    sample_action = env.action_space.sample()
-    print("Sample Action:", sample_action)
 
-    # Take a step in the environment using the sample action
-    new_obs, reward, terminated, truncated, info = env.step(sample_action)
-    print("New Observations:", new_obs)
-    print("Reward:", reward)
 
-    ############################################################  TEST ENV #########################################################
+
+
+############################################################  TEST ENV #########################################################
+
+# # Using sample action in-place of predicted action from the model.
+
+#     # Reset environment and get initial observations
+#     observations = {}
+#     for id in range(num_bees):
+#         # env.reset(robot_id=id)
+#         observations[id], info = env.reset(robot_id=id)
+#         terminated = False
+#         truncated = False
+#         episode_reward = 0
+#         episode_length = 0
+
+#         print("Initial Observations:", observations[id], " of robot id: ", id)
+
+#         # Create a sample action vector for each bee
+#         # Here, we simply sample a random action from the defined action_space.
+#         sample_action = env.action_space.sample()
+#         print("Sample Action:", sample_action, " of robot id: ", id)
+
+#         # Take a step in the environment using the sample action
+#         new_obs, reward, terminated, truncated, info = env.step(sample_action, robot_id=id)
+#         print("New Observations:", new_obs, " of robot id: ", id)
+#         print("Reward:", reward, " of robot id: ", id)
+
+#     # # Single agent
+#     # obs, info = env.reset()
+#     # print("Initial Observations:", obs)
+
+#     # # Create a sample action vector for each bee (3 values per bee: x, y, dance intensity)
+#     # # Here, we simply sample a random action from the defined action_space.
+#     # sample_action = env.action_space.sample()
+#     # print("Sample Action:", sample_action)
+
+#     # # Take a step in the environment using the sample action
+#     # new_obs, reward, terminated, truncated, info = env.step(sample_action)
+#     # print("New Observations:", new_obs)
+#     # print("Reward:", reward)
     
-    while(True):
-        # env.render(mode="human", fps=60)
-        sample_action = env.action_space.sample()
-        new_obs, reward, terminated, truncated, info = env.step(sample_action)
-        env.render(mode="human", fps=60)
-        # time.sleep(1)
 
-    #save video and reeset frames.
-    # env.close()
+#     ############################################################  TEST ENV #########################################################
+    
+#     # while(True):
+#     #     # env.render(mode="human", fps=60)
+#     #     sample_action = env.action_space.sample()
+#     #     new_obs, reward, terminated, truncated, info = env.step(sample_action)
+#     #     env.render(mode="human", fps=60)
+#     #     # time.sleep(1)

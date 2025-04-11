@@ -9,11 +9,20 @@ class DifferentialDriveRobot:
         self.prev_velocity = np.array([0.0, 0.0])
         self.max_acceleration = float("inf") # m/s^2
         self.omega_acceleration = 7.5 # rad/s^2
+
+        # State parameters.
         self.dancing = False
         self.carrying_nectar = False
+        self.returning_hive = False # [State managed by state machine not RL Model ]
         self.energy_level = 1000
         # It reads if the waggle dance is being read or not by the others.
         self.waggle_comm = False
+
+
+        # Dance based parameters
+        self.last_source_pose = {-100,-100}
+        self.dance_step_counter = 0
+        self.last_dance_info = None
 
     def update_position(self, left_wheel_velocity, right_wheel_velocity, dt=0.1):
         # Differential drive kinematics
@@ -41,11 +50,11 @@ class DifferentialDriveRobot:
         # not used right now, as at reset the robots are made again from sratch.
         self.dancing = False
         self.carrying_nectar = False
-        self.energy_level = 1000
+        self.energy_level = 50
         self.waggle_comm = False
 
     def get_state(self):
-        return np.array([self.x, self.y, self.theta, self.dancing, self.carrying_nectar, self.energy_level, self.waggle_comm])
+        return np.array([self.x, self.y, self.theta, self.dancing, self.carrying_nectar, self.energy_level, self.waggle_comm, self.returning_hive])
     
     def wiggle_dance(self, step_counter, distance, orientation, intensity, dt=0.1):
         # will call updateposition with the appropriate wheel velocities
@@ -84,9 +93,10 @@ class DifferentialDriveRobot:
             # Update the robot's position
             self.update_position(left_wheel_velocity, right_wheel_velocity, dt)
 
-    def update_state(self, dancing, carrying_nectar, energy_level, waggle_comm):
+    def update_state(self, dancing, carrying_nectar, energy_level, waggle_comm, returning_hive):
         self.dancing = dancing
         self.carrying_nectar = carrying_nectar
         self.energy_level = energy_level
         self.waggle_comm = waggle_comm
+        self.returning_hive = returning_hive
         
