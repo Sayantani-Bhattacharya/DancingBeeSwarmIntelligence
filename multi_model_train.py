@@ -6,6 +6,7 @@ import time
 import wandb
 from wandb.integration.sb3 import WandbCallback
 import numpy as np
+import imageio
 
 
 STOPING_INTERATION = 2
@@ -43,6 +44,8 @@ if __name__ == "__main__":
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
+    # === Frame collection for video ===
+    video_frames = []
 
     ## Setting up the environment.
     num_envs = 1 # When actual training use 20  ||   # number of parallel environments
@@ -62,18 +65,14 @@ if __name__ == "__main__":
 
     num_bees = env.num_bees
     TIMESTEPS = 200
-    EPISODES = 500
+    EPISODES = 100
         
-    
     # Vectorized env.
     # env = SubprocVecEnv([make_env() for _ in range(num_envs)])
     # # To run everything in a single thread: runs all environments in the main process.
     # # env = DummyVecEnv([make_env() for _ in range(num_envs)])
-
     # env = VecMonitor(env)  # VecMonitor wraps the entire VecEnv for logging
     # env = VecNormalize(env, norm_reward=True) # VecNormalize normalizes the rewards
-
-
 
     # Initialize the model
     model = PPO('MlpPolicy', env, verbose=1, device="cpu", n_steps=6144, tensorboard_log=logdir)
@@ -82,21 +81,19 @@ if __name__ == "__main__":
     iters = model.num_timesteps // TIMESTEPS
     print(f"Starting from iteration {iters}")
 
+    observations = {}
+    observations_array, _ = env.reset()
+
     # Main training loop.
 
     # This is for swarm loop.
     for ep in range(EPISODES):
         print(f"\n=== EPISODE {ep + 1} ===")
 
-        observations = {}
-        observations_array, _ = env.reset()
         i = 0
         for obs in observations_array:
             observations[i] = obs
             i +=1
-
-        # for i in range(num_bees):
-        #     observations[i], _ = env.reset(robot_id=i)
 
         total_reward = 0
 
@@ -112,6 +109,10 @@ if __name__ == "__main__":
 
             if step % 20 == 0:
                 env.render(mode="human", fps=60)
+                frame = env.render(mode="rgb_array")
+        
+        video_frames = env.get_video_frames()
+        env.reset_frames()
 
         print(f"Episode {ep + 1} finished with total reward: {total_reward}")
 
@@ -119,7 +120,20 @@ if __name__ == "__main__":
         if (ep + 1) % 10 == 0:
             model.save(f"{models_dir}/bee_model_ep{ep + 1}")
 
+        # log the video
+        # === Save and log video to W&B ===
+        video_path = "videos/bee_eval_run.mp4"
+        
+        wandb.log({
+            "episode_reward": total_reward,
+            "episode_length": step,
+            "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
+        })
 
+        print("🎥 Video logged to wandb!")
+
+        # === Final cleanup ===
+        # env.reset()
 
     # This is the one for single agent training.
     # # while True:
@@ -131,7 +145,6 @@ if __name__ == "__main__":
     #     # model.learn(total_timesteps= TIMESTEPS, reset_num_timesteps=False, callback=WandbCallback(model_save_freq=TIMESTEPS, model_save_path=f"{models_dir}/{TIMESTEPS*iters}", verbose=1))
     #     model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, callback=WandbCallback(model_save_freq=TIMESTEPS, model_save_path=f"{models_dir}/{TIMESTEPS*iters}", verbose=1))
 
-        
     #     print(f"Completed iteration {iters}.")
 
     #     # render a video of the trained model in action
