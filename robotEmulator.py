@@ -20,7 +20,7 @@ class DifferentialDriveRobot:
 
 
         # Dance based parameters
-        self.last_source_pose = {-100,-100}
+        self.last_source_pose = [-100,-100]
         self.dance_step_counter = 0
         self.last_dance_info = None
 

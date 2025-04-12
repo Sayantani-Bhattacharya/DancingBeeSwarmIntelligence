@@ -17,7 +17,7 @@ def make_env(arena_length, arena_width, num_bees, num_sources,robot_distance_bet
             robot_distance_between_wheels=robot_distance_between_wheels,
             robot_wheel_radius=robot_wheel_radius,
             max_wheel_velocity=max_wheel_velocity,
-            action_mode="point"
+            action_mode="multi"
             # "multi"
         )
         return env
@@ -25,7 +25,7 @@ def make_env(arena_length, arena_width, num_bees, num_sources,robot_distance_bet
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained RL model for the herding task.")
-    parser.add_argument("--num_bees", type=int, default=8, help="Number of bees in the simulation.")
+    parser.add_argument("--num_bees", type=int, default=4, help="Number of bees in the simulation.")
     parser.add_argument("--num_sources", type=int, default=1, help="Number of sources in the simulation.")
     parser.add_argument("--model_path", type=str, required=True, help="Path to the trained RL model.")
     parser.add_argument("--save_video", type=str, default="False", help="Save videos of simulations (True/False).")
@@ -45,8 +45,8 @@ if __name__ == "__main__":
             os.makedirs("videos")
 
     # Environment parameters
-    arena_length = 15
-    arena_width = 15
+    arena_length = 20
+    arena_width = 20
     robot_wheel_radius = 0.1
     robot_distance_between_wheels = 0.2
     max_wheel_velocity = 10.0

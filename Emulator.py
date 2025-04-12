@@ -82,7 +82,7 @@ class BeeSimEnv(gym.Env):
         elif self.action_mode == "multi":
             # when action mode is multi, the env is configured as a single-forger, single-resting env
             self.observation_space = spaces.Box(low=-1, high=1, 
-                                                shape=((1 + 1)*9,), dtype=np.float32)
+                                                shape=((1)*9,), dtype=np.float32)
             self.action_count = 0 # counter to keep track of the number of sheep-dogs that have taken their actions
             # self.farthest_sheep = None # a list to keep track of the sheep farthest from the goal point 
 
@@ -612,7 +612,7 @@ class BeeSimEnv(gym.Env):
 
         # Plot robots
         for i, robot in enumerate(self.robots):
-            robot_x, robot_y, robot_theta, robot_dancing ,_,_,_ = robot.get_state()  # Get robot position
+            robot_x, robot_y, robot_theta, robot_dancing ,_,_,_,_ = robot.get_state()  # Get robot position
 
             print(f"Robot State {i}: x = {robot_x}, y = {robot_y}, theta = {robot_theta}, dancing = {robot_dancing}")
             
@@ -674,10 +674,19 @@ class BeeSimEnv(gym.Env):
 
     def reset(self, seed=None, options=None, robot_id = None):
         super().reset(seed=seed)
+        all_flag = 0
         if self.action_mode == "multi":
-            assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
+            if (robot_id is not None):
+                print("Reset individual robot in the environment, and write the logic for it here!")
+                # assert robot_id < self.num_bees, "Invalid robot ID! Please provide a valid robot ID."
+            else:
+                print("Reset all robots in the environment!")
+                all_flag = 1
+            # assert robot_id is not None, "Invalid robot ID! Please provide a valid robot ID."
+        
         # Reset the environment
-        if self.action_mode != "multi":            
+        if self.action_mode != "multi":  
+            # TODO: Combine all bees types.          
             # generate random initial positions within the arena if not provided
             if self.initial_positions is None:
                 initial_positions = []
@@ -714,15 +723,37 @@ class BeeSimEnv(gym.Env):
             obs = self.unpack_observation(obs, remove_orientation=True)
 
             return obs, info
+        
+        # Reseting in multi-robot cases.
+        elif (all_flag):
+            # generate random initial positions within the arena if not provided
+            if self.initial_positions is None:
+                initial_positions = []
+                for _ in range(self.num_bees):
+                    x = np.random.uniform(self.arena_threshold, self.arena_length - self.arena_threshold)
+                    y = np.random.uniform(self.arena_threshold, self.arena_width - self.arena_threshold)
+                    theta = np.random.uniform(-np.pi, np.pi)
+                    initial_positions.append([x, y, theta])
+                # hold the information of all robots in self.robots
+                self.robots = self.init_robots(initial_positions) 
 
-        else:
-            # Reseting in multi-robot cases.
+            # reset the min score
+            self.min_score = float('inf')
+
+            # reset the step counter
+            self.curr_iter = 0
+
             info = {}
-            obs = self.get_multi_observations(robot_id)
-            obs = self.normalize_observation(obs)
-            obs = self.unpack_observation(obs, remove_orientation=True)
+            obs_vector = []
 
-            return obs, info
+            for robot_id in range(len(self.robots)):
+                obs = self.get_multi_observations(robot_id)
+                obs = self.normalize_observation(obs)
+                obs = self.unpack_observation(obs, remove_orientation=True)
+                obs_vector.append(obs)
+
+            print("Resetted all robots in the environment!")
+            return obs_vector, info
 
     def get_video_frames(self):
         frames = np.array(self.frames)
