@@ -64,7 +64,7 @@ if __name__ == "__main__":
     )
 
     num_bees = env.num_bees
-    TIMESTEPS = 200
+    TIMESTEPS = 5000
     EPISODES = 100
         
     # Vectorized env.
@@ -116,9 +116,9 @@ if __name__ == "__main__":
 
         print(f"Episode {ep + 1} finished with total reward: {total_reward}")
 
-        # === Save model periodically ===
-        if (ep + 1) % 10 == 0:
-            model.save(f"{models_dir}/bee_model_ep{ep + 1}")
+        # # === Save model periodically ===
+        # if (ep + 1) % 10 == 0:
+        #     model.save(f"{models_dir}/bee_model_ep{ep + 1}")
 
         # log the video
         # === Save and log video to W&B ===
@@ -129,6 +129,11 @@ if __name__ == "__main__":
             "episode_length": step,
             "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
         })
+
+        # Save the final model as a zip file
+        model.save(f"{models_dir}/bee_model_final.zip")
+        model.save(f"trained_models/model_final.zip")
+
 
         print("🎥 Video logged to wandb!")
 

@@ -470,6 +470,18 @@ class BeeSimEnv(gym.Env):
 
 
             self.robots[robot_id].update_state(dancing=dancing, carrying_nectar=carrying_nectar, energy_level=energy_level, waggle_comm=waggle_comm, returning_hive=returning_hive)
+            observations = self.get_multi_observations(robot_id)
+            # normalize the observations
+            observations = self.normalize_observation(observations)
+            # unpack the observations
+            observations = self.unpack_observation(observations, remove_orientation=True)
+
+            # Compute reward, terminated, and info
+            self.reward, self.terminated, self.truncated = self.compute_reward()
+            info = {}
+            # This returns everything for just the robot_id that took the action.
+            return observations, self.reward, self.terminated, self.truncated, info
+
 
 
 

@@ -74,8 +74,13 @@ if __name__ == "__main__":
     with torch.no_grad():
         for sim in tqdm.tqdm(range(args.num_sims)):
             observations = {}
-            for i in range(args.num_bees):
-                observations[i], info = env.reset(robot_id=i)
+            observations_array, _ = env.reset()
+            i = 0
+            for obs in observations_array:
+                observations[i] = obs
+                i +=1
+            
+
             terminated = False
             truncated = False
             episode_reward = 0
@@ -83,6 +88,9 @@ if __name__ == "__main__":
 
             while not terminated and not truncated:
                 for i in range(args.num_bees):
+                    print("Length of observations: ", len(observations))
+                    # print("Observations: ", observations)
+                    
                     action, _ = models[i].predict(observations[i], deterministic=False)
                     observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
                 episode_reward += reward
