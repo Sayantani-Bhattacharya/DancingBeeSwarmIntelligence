@@ -87,13 +87,16 @@ if __name__ == "__main__":
             episode_length = 0
 
             while not terminated and not truncated:
+                episode_reward = 0
+
                 for i in range(args.num_bees):
                     print("Length of observations: ", len(observations))
                     # print("Observations: ", observations)
                     
                     action, _ = models[i].predict(observations[i], deterministic=False)
                     observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
-                episode_reward += reward
+                    episode_reward += reward
+                    
                 episode_length += 1
 
                 if args.render_mode == "human":

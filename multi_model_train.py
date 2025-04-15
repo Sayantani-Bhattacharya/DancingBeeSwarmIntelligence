@@ -6,7 +6,6 @@ import time
 import wandb
 from wandb.integration.sb3 import WandbCallback
 import numpy as np
-import imageio
 
 
 STOPING_INTERATION = 2
@@ -82,6 +81,9 @@ if __name__ == "__main__":
     print(f"Starting from iteration {iters}")
 
     observations = {}
+    per_bee_reward = {}
+    total_energy = 0
+    per_bee_energy = {}
     observations_array, _ = env.reset()
 
     # Main training loop.
@@ -95,9 +97,9 @@ if __name__ == "__main__":
             observations[i] = obs
             i +=1
 
-        total_reward = 0
 
         for step in range(TIMESTEPS):
+            total_reward = 0
             for i in range(num_bees):
                 obs = observations[i]
                 action, _ = model.predict(obs, deterministic=False)
@@ -105,11 +107,23 @@ if __name__ == "__main__":
                 # Step for only one robot
                 new_obs, reward, terminated, truncated, _ = env.step(action, robot_id=i)
                 observations[i] = new_obs
+                per_bee_reward[i] = reward
                 total_reward += reward
+                total_energy += env.robots[i].energy_level
+                per_bee_energy[i] = env.robots[i].energy_level    
 
             if step % 20 == 0:
                 env.render(mode="human", fps=60)
                 frame = env.render(mode="rgb_array")
+                # env.frames.append(frame)
+
+            wandb.log({
+                "episode_reward": total_reward,
+                "episode_length": step,
+                "total_energy": total_energy,
+                # "bee_energy": env.robots[i].energy, To add for different bees.
+                # "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
+            })
         
         video_frames = env.get_video_frames()
         env.reset_frames()
@@ -122,13 +136,18 @@ if __name__ == "__main__":
 
         # log the video
         # === Save and log video to W&B ===
-        video_path = "videos/bee_eval_run.mp4"
+        # video_path = "videos/bee_eval_run.mp4"
+        # env.save_video(video_path, fps=60)
+        # env.reset_frames()
         
-        wandb.log({
-            "episode_reward": total_reward,
-            "episode_length": step,
-            "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
-        })
+        
+        # wandb.log({
+        #     "episode_reward": total_reward,
+        #     "episode_length": step,
+        #     "total_energy": total_energy,
+        #     # "bee_energy": env.robots[i].energy, To add for different bees.
+        #     "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
+        # })
 
         # Save the final model as a zip file
         model.save(f"{models_dir}/bee_model_final.zip")
