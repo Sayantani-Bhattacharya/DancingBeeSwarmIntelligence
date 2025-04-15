@@ -880,19 +880,23 @@ class BeeSimEnv(gym.Env):
     
     def compute_reward(self):
         """
-        Compute the reward based on score improvements from the minimum achieved score.
-        Score is calculated based on sheep distance from goal, with:
-        - Positive rewards for improving the minimum score achieved
-        - Time penalty per step
-        - Large terminal reward for success
-        - No penalty for score reduction
+        Behavior | Reward
+
+        Bee energy | proportional to the energy level
+        Bee finds nectar | +10
+        Bee returns nectar to hive | +10
+        Bee performs dance in hive | +1
+        Bee observes dance in hive | +2
+        Bee wrongly observes outside | -1
+        Bee moves randomly / does nothing | -0.1
+        Successful termination | +50000
+        Time penalty | -1.0
 
         Returns:
             float: Reward value
         """
 
-        reward = 0.0
-    
+        reward = 0.0    
         # Check termination conditions first
         terminated = self.check_terminated()
         truncated = self.check_truncated()
@@ -909,6 +913,46 @@ class BeeSimEnv(gym.Env):
 
         # add negative reward for each time step
         reward += -5.0
+
+        for i, robot in enumerate(self.robots):
+            x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm, returning_hive = robot.get_state()
+            
+            # 1. Nectar collected (was already marked as carrying)
+            # CAUTION: This will be iterated through the whole time the bee is around the nectar source, 
+            # so this may also lead to the bee not wanting to return to the hive...
+            for sx, sy, sr in self.sources:
+                if np.linalg.norm(np.array([x, y]) - np.array([sx, sy])) < sr and carrying_nectar:
+                    reward += 1.0
+                    break
+
+            # 2. Nectar delivered to hive
+            hive_dist = np.linalg.norm(np.array([x, y]) - np.array(self.hive))
+            if hive_dist < self.hive_radius and carrying_nectar:
+                reward += 10.0
+
+            # 3. Dancing in hive
+            if dancing and hive_dist < self.hive_radius:
+                reward += 1.0
+
+            # 4. Observing wiggle
+            if waggle_comm == 1:
+                if hive_dist < self.hive_radius:
+                    reward += 2.0
+                else:
+                    reward -= 1.0
+
+            # 5. Idle penalty (soft): soft because bee needs to explore also.
+            if not dancing and not waggle_comm and not carrying_nectar:
+                reward -= 0.1
+
+            # 6. Energy shaping: To motivate bee to work in the most energy optimized method.
+            # CAUTION: This can also motivate the bee to not move also.
+            reward += energy_level / 10.0
+
+        # 7. Time penalty per step
+        reward -= 1.0
+
+
 
         # # Calculate score based on sheep distance from goal
         # score = 0.0
