@@ -6,6 +6,8 @@ from stable_baselines3.common.vec_env import VecNormalize
 from Emulator import BeeSimEnv
 import tqdm
 import time
+import wandb
+from wandb.integration.sb3 import WandbCallback
 
 def make_env(arena_length, arena_width, num_bees, num_sources,robot_distance_between_wheels, robot_wheel_radius, max_wheel_velocity):
     def _init():
@@ -36,7 +38,10 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     # Convert save_video to boolean
+    name = "Eval"
+    time_now = time.strftime("%Y%m%d-%H%M%S")
     save_video = args.save_video.lower() == "true" 
+    run = wandb.init(project='bee_swarm_rl', name=f"{name}-{time_now}" , sync_tensorboard=True, save_code=True)
 
     # create a video directory if it does not exist
     if save_video:
@@ -78,13 +83,14 @@ if __name__ == "__main__":
             i = 0
             for obs in observations_array:
                 observations[i] = obs
-                i +=1
-            
+                i +=1           
 
             terminated = False
             truncated = False
             episode_reward = 0
             episode_length = 0
+            # Per bee information.
+            reward_dict, nectar_collect_reward_dict, nectar_delivery_reward_dict, dance_reward_dict, wiggle_obs_reward_dict = {}, {}, {}, {}, {}
 
             while not terminated and not truncated:
                 episode_reward = 0
@@ -96,6 +102,13 @@ if __name__ == "__main__":
                     action, _ = models[i].predict(observations[i], deterministic=False)
                     observations[i], reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated, _ = env.step(action, robot_id=i)
                     episode_reward += reward
+                    reward_dict[i] = reward
+                    nectar_collect_reward_dict[i] = nectar_collect_reward
+                    nectar_delivery_reward_dict[i] = nectar_delivery_reward
+                    dance_reward_dict[i] = dance_reward
+                    wiggle_obs_reward_dict[i] = wiggle_obs_reward
+
+
                     
                 episode_length += 1
 
@@ -104,11 +117,21 @@ if __name__ == "__main__":
                 elif args.render_mode == "offscreen":
                     env.render()
 
-            # Save video if specified
-            if save_video:
-                print(f"Saving video for simulation {sim}")
-                env.save_video(f"videos/simulation_{sim}.mp4", fps=60)
-            env.reset_frames()
+                # Log metrics cummulatively for all bee.
+                wandb.log({
+                    # sum of elemetns of dict:
+                    "reward/total": sum(reward_dict.values()),
+                    "reward/nectar_collect": sum(nectar_collect_reward_dict.values()),
+                    "reward/nectar_delivery": sum(nectar_delivery_reward_dict.values()),
+                    "reward/dance": sum(dance_reward_dict.values()),
+                    "reward/wiggle_obs": sum(wiggle_obs_reward_dict.values()),
+                })
+
+            # # Save video if specified
+            # if save_video:
+            #     print(f"Saving video for simulation {sim}")
+            #     env.save_video(f"videos/simulation_{sim}.mp4", fps=60)
+            # env.reset_frames()
 
             # Record metrics
             metrics['episode_rewards'].append(episode_reward)
@@ -117,6 +140,8 @@ if __name__ == "__main__":
                 metrics['successful_episodes'] += 1
             elif truncated:
                 metrics['unsuccessful_episodes'] += 1
+
+            
 
         # Close the environment
         env.close()

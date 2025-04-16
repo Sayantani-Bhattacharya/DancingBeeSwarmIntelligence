@@ -31,7 +31,7 @@ def make_env():
 
 if __name__ == "__main__":
     # Initialize wandb for logging
-    name = "bee_swarm_PPO"
+    name = "Train"
     time_now = time.strftime("%Y%m%d-%H%M%S")
     run = wandb.init(project='bee_swarm_rl', name=f"{name}-{time_now}" , sync_tensorboard=True, save_code=True)
 
@@ -103,7 +103,6 @@ if __name__ == "__main__":
             for i in range(num_bees):
                 obs = observations[i]
                 action, _ = model.predict(obs, deterministic=False)
-
                 # Step for only one robot
                 new_obs, reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated, _ = env.step(action, robot_id=i)
                 observations[i] = new_obs
@@ -114,8 +113,6 @@ if __name__ == "__main__":
 
             if step % 20 == 0:
                 env.render(mode="human", fps=60)
-                frame = env.render(mode="rgb_array")
-                # env.frames.append(frame)
 
             wandb.log({
                 # "episode_reward": total_reward,
@@ -135,35 +132,29 @@ if __name__ == "__main__":
             })
         
         video_frames = env.get_video_frames()
-        env.reset_frames()
-
-        print(f"Episode {ep + 1} finished with total reward: {total_reward}")
+        # print(f"Episode {ep + 1} finished with total reward: {total_reward}")
 
         # # === Save model periodically ===
         # if (ep + 1) % 10 == 0:
         #     model.save(f"{models_dir}/bee_model_ep{ep + 1}")
 
-        # log the video
+        # TODO: Working!! just add this as optional, as rendering becomes really slow.  
         # === Save and log video to W&B ===
-        # video_path = "videos/bee_eval_run.mp4"
-        # env.save_video(video_path, fps=60)
-        # env.reset_frames()
-        
-        
-        # wandb.log({
-        #     "episode_reward": total_reward,
-        #     "episode_length": step,
-        #     "total_energy": total_energy,
-        #     # "bee_energy": env.robots[i].energy, To add for different bees.
-        #     "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
-        # })
+        video_path = "videos/bee_eval_run.mp4"
+        env.save_video(video_path, fps=60)
+        wandb.log({
+            "video": wandb.Video(video_path, caption="Eval run", format="mp4", fps=60)
+        })
+        print("🎥 Video logged to wandb!")
+
+
+
 
         # Save the final model as a zip file
         model.save(f"{models_dir}/bee_model_final.zip")
         model.save(f"trained_models/model_final.zip")
 
 
-        print("🎥 Video logged to wandb!")
 
         # === Final cleanup ===
         # env.reset()
