@@ -105,11 +105,11 @@ if __name__ == "__main__":
                 action, _ = model.predict(obs, deterministic=False)
 
                 # Step for only one robot
-                new_obs, reward, terminated, truncated, _ = env.step(action, robot_id=i)
+                new_obs, reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated, _ = env.step(action, robot_id=i)
                 observations[i] = new_obs
                 per_bee_reward[i] = reward
-                total_reward += reward
-                total_energy += env.robots[i].energy_level
+                # total_reward += reward
+                total_energy = env.robots[i].energy_level
                 per_bee_energy[i] = env.robots[i].energy_level    
 
             if step % 20 == 0:
@@ -118,9 +118,18 @@ if __name__ == "__main__":
                 # env.frames.append(frame)
 
             wandb.log({
-                "episode_reward": total_reward,
-                "episode_length": step,
+                # "episode_reward": total_reward,
+                # "episode_length": step,
                 "total_energy": total_energy,
+
+                "reward/total": reward,
+                "reward/nectar_collect": nectar_collect_reward,
+                "reward/nectar_delivery": nectar_delivery_reward,
+                "reward/dance": dance_reward,
+                "reward/wiggle_obs": wiggle_obs_reward,
+
+                # If you want ot track bee wise information later.
+
                 # "bee_energy": env.robots[i].energy, To add for different bees.
                 # "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
             })

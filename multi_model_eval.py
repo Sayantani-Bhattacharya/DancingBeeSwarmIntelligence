@@ -27,7 +27,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained RL model for the herding task.")
     parser.add_argument("--num_bees", type=int, default=4, help="Number of bees in the simulation.")
     parser.add_argument("--num_sources", type=int, default=1, help="Number of sources in the simulation.")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to the trained RL model.")
+    parser.add_argument("--model_path", type=str, default="trained_models/model_final.zip", help="Path to the trained RL model.")  #required = "True"
     parser.add_argument("--save_video", type=str, default="False", help="Save videos of simulations (True/False).")
     parser.add_argument("--num_sims", type=int, default=10, help="Number of simulations to run.")
     parser.add_argument("--render_mode", type=str, default="human", choices=["human", "offscreen"], help="Render mode for the environment.")
@@ -94,7 +94,7 @@ if __name__ == "__main__":
                     # print("Observations: ", observations)
                     
                     action, _ = models[i].predict(observations[i], deterministic=False)
-                    observations[i], reward, terminated, truncated, _ = env.step(action, robot_id=i)
+                    observations[i], reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated, _ = env.step(action, robot_id=i)
                     episode_reward += reward
                     
                 episode_length += 1

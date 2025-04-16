@@ -477,10 +477,11 @@ class BeeSimEnv(gym.Env):
             observations = self.unpack_observation(observations, remove_orientation=True)
 
             # Compute reward, terminated, and info
-            self.reward, self.terminated, self.truncated = self.compute_reward()
+            nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward = 0, 0, 0, 0
+            self.reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, self.terminated, self.truncated = self.compute_reward()
             info = {}
             # This returns everything for just the robot_id that took the action.
-            return observations, self.reward, self.terminated, self.truncated, info
+            return observations, self.reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, self.terminated, self.truncated, info
 
 
 
@@ -523,10 +524,11 @@ class BeeSimEnv(gym.Env):
         # else:
         # self.compute_sheep_actions() action of bee together?
         # Compute reward, terminated, and info
-        self.reward, self.terminated, self.truncated = self.compute_reward()
+        nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward = 0, 0, 0, 0
+        self.reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, self.terminated, self.truncated = self.compute_reward()
         info = {}
 
-        return observations, self.reward, self.terminated, self.truncated, info
+        return observations, self.reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, self.terminated, self.truncated, info
 
     def wiggle_dance(self, robot_id =0, theta=None, point_dist=None, dance_intensity=None):
         self.robots[robot_id].dancing = True
@@ -897,6 +899,12 @@ class BeeSimEnv(gym.Env):
         """
 
         reward = 0.0    
+        nectar_collect_reward = 0.0
+        nectar_delivery_reward = 0.0
+        inside_hive_reward = 0.0
+        dance_reward = 0.0
+        wiggle_obs_reward = 0.0
+
         # Check termination conditions first
         terminated = self.check_terminated()
         truncated = self.check_truncated()
@@ -904,15 +912,13 @@ class BeeSimEnv(gym.Env):
         # Give large reward for successful herding
         if terminated:
             reward += 50000.0
-            return reward, terminated, truncated
+            return reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated
             
         # Apply time penalty if truncated
         if truncated:
             reward += -5.0
-            return reward, terminated, truncated
+            return reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated
 
-        # add negative reward for each time step
-        reward += -5.0
 
         for i, robot in enumerate(self.robots):
             x, y, theta, dancing, carrying_nectar, energy_level, waggle_comm, returning_hive = robot.get_state()
@@ -923,23 +929,28 @@ class BeeSimEnv(gym.Env):
             for sx, sy, sr in self.sources:
                 if np.linalg.norm(np.array([x, y]) - np.array([sx, sy])) < sr and carrying_nectar:
                     reward += 1.0
+                    nectar_collect_reward += 1.0
                     break
 
             # 2. Nectar delivered to hive
             hive_dist = np.linalg.norm(np.array([x, y]) - np.array(self.hive))
             if hive_dist < self.hive_radius and carrying_nectar:
                 reward += 10.0
+                nectar_delivery_reward += 10.0
 
             # 3. Dancing in hive
             if dancing and hive_dist < self.hive_radius:
                 reward += 1.0
+                dance_reward += 1.0
 
             # 4. Observing wiggle
             if waggle_comm == 1:
                 if hive_dist < self.hive_radius:
                     reward += 2.0
+                    wiggle_obs_reward += 2.0
                 else:
                     reward -= 1.0
+                    wiggle_obs_reward -= 1.0
 
             # 5. Idle penalty (soft): soft because bee needs to explore also.
             if not dancing and not waggle_comm and not carrying_nectar:
@@ -951,8 +962,6 @@ class BeeSimEnv(gym.Env):
 
         # 7. Time penalty per step
         reward -= 1.0
-
-
 
         # # Calculate score based on sheep distance from goal
         # score = 0.0
@@ -971,7 +980,7 @@ class BeeSimEnv(gym.Env):
         # else:
         #     reward -= 25.0
 
-        return reward, terminated, truncated
+        return reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated
 
     def check_terminated(self):
         terminated = False
