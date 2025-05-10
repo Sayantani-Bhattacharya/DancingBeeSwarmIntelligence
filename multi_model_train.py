@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # === Frame collection for video ===
     video_frames = []
 
-    ## Setting up the environment.
+    # Setting up the environment.
     num_envs = 1 # When actual training use 20  ||   # number of parallel environments
     
     
@@ -74,17 +74,25 @@ if __name__ == "__main__":
     # env = VecNormalize(env, norm_reward=True) # VecNormalize normalizes the rewards
 
     # Initialize the model
-    model = PPO('MlpPolicy', env, verbose=1, device="cpu", n_steps=6144, tensorboard_log=logdir)
-    TIMESTEPS = 1 #250000 # number of timesteps to train the model for before logging
+    model = PPO('MlpPolicy', env, verbose=1, device="cuda", n_steps=6144, tensorboard_log=logdir)
+    TIMESTEPS = 500 #250000 # number of timesteps to train the model for before logging [this is also the steps for each episode]
     # calculate iterations based on num_timesteps
     iters = model.num_timesteps // TIMESTEPS
     print(f"Starting from iteration {iters}")
 
     observations = {}
+    # per_bee_reward: Dictionary that has total reward in indivudual step for each bee, with key as teh bee id.
     per_bee_reward = {}
     total_energy = 0
     per_bee_energy = {}
     observations_array, _ = env.reset()
+
+    # Initialize per bee energy metrics
+    nectar_collect_total = {i: 0 for i in range(num_bees)}
+    nectar_delivery_total = {i: 0 for i in range(num_bees)}
+    dance_total = {i: 0 for i in range(num_bees)}
+    wiggle_obs_total = {i: 0 for i in range(num_bees)}
+
 
     # Main training loop.
 
@@ -100,36 +108,62 @@ if __name__ == "__main__":
 
         for step in range(TIMESTEPS):
             total_reward = 0
+
+
             for i in range(num_bees):
                 obs = observations[i]
                 action, _ = model.predict(obs, deterministic=False)
                 # Step for only one robot
                 new_obs, reward, nectar_collect_reward, nectar_delivery_reward, dance_reward, wiggle_obs_reward, terminated, truncated, _ = env.step(action, robot_id=i)
                 observations[i] = new_obs
-                per_bee_reward[i] = reward
-                # total_reward += reward
+                
+                # Storing the reward metrics for each bee.
+                nectar_collect_total[i] += nectar_collect_reward
+                nectar_delivery_total[i] += nectar_delivery_reward
+                dance_total[i] += dance_reward
+                wiggle_obs_total[i] += wiggle_obs_reward
+                
+                # Accumulating reward for each bee for logging.
+                if i not in per_bee_reward:
+                    per_bee_reward[i] = 0
+                per_bee_reward[i] += reward 
                 total_energy = env.robots[i].energy_level
-                per_bee_energy[i] = env.robots[i].energy_level    
+                # Accumulating energy for each bee for logging.
+                if i not in per_bee_energy:
+                    per_bee_energy[i] = 0
+                per_bee_energy[i] += env.robots[i].energy_level  
 
             if step % 20 == 0:
                 env.render(mode="human", fps=60)
 
             wandb.log({
-                # "episode_reward": total_reward,
-                # "episode_length": step,
-                "total_energy": total_energy,
+                "episode_length": step,
+                "episode": ep,
+                "reward/total_episode": sum(per_bee_reward.values()),
+                "reward/bee0": per_bee_reward[0],
+                "reward/bee1": per_bee_reward[1],
+                "reward/bee2": per_bee_reward[2],
+                "reward/bee3": per_bee_reward[3],
 
-                "reward/total": reward,
-                "reward/nectar_collect": nectar_collect_reward,
-                "reward/nectar_delivery": nectar_delivery_reward,
-                "reward/dance": dance_reward,
-                "reward/wiggle_obs": wiggle_obs_reward,
+                "reward/nectar_collect_total": sum(nectar_collect_total.values()),
+                "reward/nectar_delivery_total": sum(nectar_delivery_total.values()),
+                "reward/dance_total": sum(dance_total.values()),
+                "reward/wiggle_obs_total": sum(wiggle_obs_total.values()),
 
-                # If you want ot track bee wise information later.
+                "energy/bee0": per_bee_energy[0],
+                "energy/bee1": per_bee_energy[1],
+                "energy/bee2": per_bee_energy[2],
+                "energy/bee3": per_bee_energy[3],
 
-                # "bee_energy": env.robots[i].energy, To add for different bees.
                 # "video": wandb.Video(video_frames, caption="Eval run", format="mp4", fps=30)
             })
+
+            # Reset the per bee energy metrics for each episode: for logging i dont need accumulated metrics, i need accumulation for enery and reward only.
+            nectar_collect_total = {i: 0 for i in range(num_bees)}
+            nectar_delivery_total = {i: 0 for i in range(num_bees)}
+            dance_total = {i: 0 for i in range(num_bees)}
+            wiggle_obs_total = {i: 0 for i in range(num_bees)}
+            
         
         video_frames = env.get_video_frames()
         # print(f"Episode {ep + 1} finished with total reward: {total_reward}")
@@ -138,16 +172,14 @@ if __name__ == "__main__":
         # if (ep + 1) % 10 == 0:
         #     model.save(f"{models_dir}/bee_model_ep{ep + 1}")
 
-        # TODO: Working!! just add this as optional, as rendering becomes really slow.  
-        # === Save and log video to W&B ===
-        video_path = "videos/bee_eval_run.mp4"
-        env.save_video(video_path, fps=60)
-        wandb.log({
-            "video": wandb.Video(video_path, caption="Eval run", format="mp4", fps=60)
-        })
-        print("🎥 Video logged to wandb!")
-
-
+        # # TODO: Working!! just add this as optional, as rendering becomes really slow.  
+        # # === Save and log video to W&B ===
+        # video_path = "videos/bee_eval_run.mp4"
+        # env.save_video(video_path, fps=60)
+        # wandb.log({
+        #     "video": wandb.Video(video_path, caption="Eval run", format="mp4", fps=60)
+        # })
+        # print("🎥 Video logged to wandb!")
 
 
         # Save the final model as a zip file
